@@ -1,0 +1,63 @@
+{
+  "manifest_version": 3,
+  "name": "Fetchr",
+  "version": "1.0.0",
+  "description": "Download anything — intercepts browser downloads, grabs media, batch-downloads. Powered by your local Fetchr agent.",
+
+  "permissions": [
+    "downloads",
+    "downloads.open",
+    "activeTab",
+    "scripting",
+    "storage",
+    "contextMenus",
+    "notifications",
+    "tabs",
+    "cookies"
+  ],
+
+  "host_permissions": [
+    "http://127.0.0.1:9876/*",
+    "<all_urls>"
+  ],
+
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16":  "icons/icon16.png",
+      "48":  "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+
+  "icons": {
+    "16":  "icons/icon16.png",
+    "48":  "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/*"],
+      "matches":   ["<all_urls>"]
+    }
+  ]
+}

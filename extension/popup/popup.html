@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fetchr</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════ HEADER ═══════════════ -->
+  <header class="header">
+    <div class="header-left">
+      <svg class="logo" viewBox="0 0 24 24" fill="none">
+        <path d="M12 2L12 14M12 14L8 10M12 14L16 10" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M4 17v1a3 3 0 003 3h10a3 3 0 003-3v-1" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round"/>
+      </svg>
+      <span class="app-name">Fetchr</span>
+    </div>
+    <div class="header-right">
+      <div class="agent-pill" id="agentPill">
+        <span class="agent-dot" id="agentDot"></span>
+        <span class="agent-label" id="agentLabel">Connecting…</span>
+      </div>
+      <button class="icon-btn" id="settingsBtn" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2
+          2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1
+          1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2
+          2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0
+          010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65
+          1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65
+          0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0
+          001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ═══════════════════════════════════════ STATS BAR ════════════ -->
+  <div class="stats-bar" id="statsBar">
+    <span class="stat" id="statActive">
+      <svg class="stat-icon" viewBox="0 0 16 16" fill="currentColor">
+        <circle cx="8" cy="8" r="3"/>
+      </svg>
+      <span id="activeCount">0</span> active
+    </span>
+    <span class="stat-sep">·</span>
+    <span class="stat" id="statSpeed">
+      <svg class="stat-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M2 11L8 5l3 3 2-2" stroke-linecap="round"/>
+      </svg>
+      <span id="totalSpeed">0 B/s</span>
+    </span>
+    <span class="stat-sep">·</span>
+    <button class="clear-btn" id="clearFinishedBtn">Clear done</button>
+  </div>
+
+  <!-- ═══════════════════════════════════════ ACTIONS ══════════════ -->
+  <div class="actions-bar">
+    <button class="action-btn primary" id="grabMediaBtn">
+      <svg viewBox="0 0 20 20" fill="currentColor">
+        <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zm14-2a1 1 0 011
+         1v10a1 1 0 01-1.447.894L11 13.764V6.236l4.553-2.13A1 1 0 0116 4z"/>
+      </svg>
+      Grab media
+    </button>
+    <button class="action-btn" id="batchSelectBtn">
+      <svg viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0
+         01-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0
+         01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 012 0v1.586l2.293-2.293a1
+         1 0 111.414 1.414L6.414 15H8a1 1 0 010 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0
+         01-1 1h-4a1 1 0 010-2h1.586l-2.293-2.293a1 1 0 111.414-1.414L15 13.586V12a1 1 0 011-1z"
+              clip-rule="evenodd"/>
+      </svg>
+      Batch select
+    </button>
+    <button class="action-btn" id="pasteUrlBtn">
+      <svg viewBox="0 0 20 20" fill="currentColor">
+        <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z"/>
+        <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3
+         3H9a3 3 0 01-3-3z"/>
+      </svg>
+      Paste URL
+    </button>
+  </div>
+
+  <!-- ═══════════════════════════════════════ URL INPUT (hidden) ═══ -->
+  <div class="url-input-wrap hidden" id="urlInputWrap">
+    <input type="url" class="url-input" id="urlInput" placeholder="https://…" />
+    <div class="url-type-row">
+      <label class="radio-label">
+        <input type="radio" name="dltype" value="direct" checked /> File
+      </label>
+      <label class="radio-label">
+        <input type="radio" name="dltype" value="media" /> Media (yt-dlp)
+      </label>
+      <button class="dl-go-btn" id="dlGoBtn">Add ↓</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════ MEDIA PANEL ══════════ -->
+  <div class="media-panel hidden" id="mediaPanel">
+    <div class="media-panel-header">
+      <span>Media found on page</span>
+      <button class="icon-btn" id="closePanelBtn">✕</button>
+    </div>
+    <div class="media-list" id="mediaList">
+      <!-- filled dynamically -->
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════ DOWNLOAD LIST ════════ -->
+  <div class="download-list" id="downloadList">
+    <div class="empty-state" id="emptyState">
+      <svg viewBox="0 0 48 48" fill="none" class="empty-icon">
+        <rect x="8" y="14" width="32" height="26" rx="3" stroke="currentColor" stroke-width="2"/>
+        <path d="M24 20v12M24 32l-4-4M24 32l4-4" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round"/>
+        <path d="M16 8h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <p>No downloads yet.<br/>Intercept is <span id="interceptStatus">active</span>.</p>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
