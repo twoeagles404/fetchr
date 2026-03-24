@@ -135,3 +135,4 @@ If you later want to move the agent to a Proxmox LXC:
 1. Change `AGENT_BASE` in `background.js` and `popup.js` from `127.0.0.1:9876` to your LXC IP
 2. Expose port 9876 (or use a reverse proxy / Nginx)
 3. Add the LXC IP to `host_permissions` in `manifest.json`
+# fetchr
