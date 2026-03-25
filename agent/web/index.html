@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fetchr</title>
+<style>
+/* ── Reset & Base ─────────────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:        #0f0f0f;
+  --surface:   #1a1a1a;
+  --card:      #242424;
+  --card-hover:#2a2a2a;
+  --border:    #333;
+  --accent:    #5865f2;
+  --accent-h:  #4752c4;
+  --text:      #f0f0f0;
+  --text-2:    #888;
+  --text-3:    #555;
+  --success:   #43b581;
+  --error:     #f04747;
+  --warning:   #faa61a;
+  --pause:     #5865f2;
+  --radius:    10px;
+  --radius-sm: 6px;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.5}
+a{color:var(--accent);text-decoration:none}
+button{cursor:pointer;border:none;outline:none;font-family:inherit;font-size:13px}
+input,select{font-family:inherit;font-size:14px}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+#app{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+#header{
+  display:flex;align-items:center;gap:16px;
+  padding:0 20px;height:52px;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px;letter-spacing:-.3px}
+.logo .icon{font-size:20px}
+.logo .v{font-size:11px;font-weight:400;color:var(--text-2);margin-left:2px}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--error);transition:.3s}
+.status-dot.online{background:var(--success)}
+#status-text{font-size:12px;color:var(--text-2)}
+#total-speed{margin-left:auto;font-size:13px;color:var(--text-2);font-variant-numeric:tabular-nums}
+#total-speed span{color:var(--text);font-weight:600}
+
+/* ── URL Bar ─────────────────────────────────────────────────────────────── */
+#url-bar{
+  padding:12px 20px;background:var(--surface);border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.url-row{display:flex;gap:8px}
+#url-input{
+  flex:1;padding:10px 14px;background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius-sm);color:var(--text);outline:none;transition:.2s;
+}
+#url-input:focus{border-color:var(--accent)}
+#url-input::placeholder{color:var(--text-3)}
+#url-btn{
+  padding:10px 20px;background:var(--accent);color:#fff;
+  border-radius:var(--radius-sm);font-weight:600;transition:.15s;white-space:nowrap;
+}
+#url-btn:hover{background:var(--accent-h)}
+#url-btn.scrape{background:#7c3aed}
+#url-btn.scrape:hover{background:#6d28d9}
+
+/* ── Tabs ────────────────────────────────────────────────────────────────── */
+#tabs-bar{
+  display:flex;align-items:center;gap:2px;
+  padding:0 20px;height:44px;background:var(--surface);
+  border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.tab{
+  padding:6px 14px;border-radius:var(--radius-sm);color:var(--text-2);
+  background:none;font-weight:500;transition:.15s;
+}
+.tab:hover{color:var(--text);background:var(--card)}
+.tab.active{color:var(--text);background:var(--card)}
+#clear-btn{
+  margin-left:auto;padding:6px 14px;border-radius:var(--radius-sm);
+  background:var(--card);color:var(--text-2);transition:.15s;
+}
+#clear-btn:hover{color:var(--text);background:var(--card-hover)}
+
+/* ── Content ─────────────────────────────────────────────────────────────── */
+#content{flex:1;overflow-y:auto;padding:16px 20px}
+
+/* ── Section headers ─────────────────────────────────────────────────────── */
+.section-label{
+  font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--text-3);margin:16px 0 8px;display:flex;align-items:center;gap:8px;
+}
+.section-label::after{content:'';flex:1;height:1px;background:var(--border)}
+.section-label:first-child{margin-top:0}
+
+/* ── Download card ───────────────────────────────────────────────────────── */
+.dl-card{
+  background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:12px 14px;margin-bottom:8px;transition:.15s;
+}
+.dl-card:hover{border-color:#444}
+.dl-row1{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.dl-icon{font-size:18px;flex-shrink:0;width:24px;text-align:center}
+.dl-name{
+  flex:1;font-weight:500;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;max-width:calc(100% - 180px);
+}
+.dl-pct{margin-left:auto;font-size:12px;font-weight:700;
+        color:var(--text-2);font-variant-numeric:tabular-nums;min-width:36px;text-align:right}
+.dl-bar-wrap{height:4px;background:var(--border);border-radius:2px;margin-bottom:8px;overflow:hidden}
+.dl-bar{
+  height:100%;border-radius:2px;transition:width .4s ease;
+  background:linear-gradient(90deg,var(--accent),#7289da);
+}
+.dl-bar.complete{background:var(--success)}
+.dl-bar.error{background:var(--error)}
+.dl-bar.paused{background:var(--text-3)}
+.dl-bar.shimmer{
+  background-size:200% 100%;
+  animation:shimmer 1.6s linear infinite;
+  background-image:linear-gradient(90deg,var(--accent) 0%,#7289da 40%,#a78bfa 60%,var(--accent) 100%);
+}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.dl-row3{display:flex;align-items:center;gap:12px;font-size:12px;color:var(--text-2)}
+.dl-row3 .stat{font-variant-numeric:tabular-nums}
+.dl-row3 .spacer{flex:1}
+.dl-actions{display:flex;gap:4px}
+.dl-btn{
+  width:28px;height:28px;border-radius:var(--radius-sm);
+  background:var(--card-hover);color:var(--text-2);
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;transition:.15s;
+}
+.dl-btn:hover{background:#333;color:var(--text)}
+.dl-btn.danger:hover{background:rgba(240,71,71,.15);color:var(--error)}
+.dl-err{font-size:11px;color:var(--error);margin-top:4px}
+.dl-skipped{font-size:12px;color:var(--text-3);font-style:italic}
+
+/* Status badges */
+.badge{
+  font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  padding:2px 6px;border-radius:3px;
+}
+.badge.queued{background:rgba(88,101,242,.15);color:var(--accent)}
+.badge.paused{background:rgba(88,101,242,.1);color:#7289da}
+.badge.complete{background:rgba(67,181,129,.1);color:var(--success)}
+.badge.error{background:rgba(240,71,71,.1);color:var(--error)}
+.badge.cancelled{background:rgba(85,85,85,.2);color:var(--text-3)}
+
+/* ── Empty state ──────────────────────────────────────────────────────────── */
+.empty{text-align:center;padding:60px 20px;color:var(--text-3)}
+.empty .icon{font-size:40px;margin-bottom:12px;display:block}
+.empty p{font-size:15px}
+
+/* ── History tab ─────────────────────────────────────────────────────────── */
+.history-table{width:100%;border-collapse:collapse}
+.history-table th{
+  text-align:left;padding:8px 12px;font-size:11px;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);
+  border-bottom:1px solid var(--border);
+}
+.history-table td{
+  padding:10px 12px;border-bottom:1px solid var(--border);
+  color:var(--text-2);font-size:13px;
+}
+.history-table tr:last-child td{border-bottom:none}
+.history-table tr:hover td{background:var(--card);color:var(--text)}
+.history-table .filename{color:var(--text);font-weight:500;max-width:280px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.history-table .url{max-width:200px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;font-size:11px;color:var(--text-3)}
+
+/* ── Settings tab ────────────────────────────────────────────────────────── */
+.settings-section{
+  background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:20px;margin-bottom:16px;
+}
+.settings-section h3{font-size:13px;font-weight:700;margin-bottom:16px;color:var(--text-2);
+  text-transform:uppercase;letter-spacing:.06em}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:12px;color:var(--text-2);margin-bottom:6px;font-weight:500}
+.field input[type=text],.field input[type=number],.field select{
+  width:100%;padding:8px 10px;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius-sm);color:var(--text);outline:none;transition:.2s;
+}
+.field input:focus,.field select:focus{border-color:var(--accent)}
+.field select option{background:var(--surface)}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;
+  padding:8px 0;border-bottom:1px solid var(--border)}
+.toggle-row:last-child{border-bottom:none;padding-bottom:0}
+.toggle-label{font-size:13px}
+.toggle-desc{font-size:11px;color:var(--text-3);margin-top:2px}
+.toggle{position:relative;width:40px;height:22px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.toggle-slider{
+  position:absolute;inset:0;background:var(--border);border-radius:11px;
+  cursor:pointer;transition:.2s;
+}
+.toggle-slider::before{
+  content:'';position:absolute;width:16px;height:16px;
+  left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;
+}
+.toggle input:checked+.toggle-slider{background:var(--accent)}
+.toggle input:checked+.toggle-slider::before{transform:translateX(18px)}
+#save-settings-btn{
+  padding:10px 24px;background:var(--accent);color:#fff;
+  border-radius:var(--radius-sm);font-weight:600;transition:.15s;
+}
+#save-settings-btn:hover{background:var(--accent-h)}
+#settings-saved{
+  display:inline-block;margin-left:12px;font-size:12px;
+  color:var(--success);opacity:0;transition:.3s;
+}
+
+/* ── Scrape Modal ────────────────────────────────────────────────────────── */
+#modal-overlay{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);
+  z-index:100;align-items:center;justify-content:center;
+}
+#modal-overlay.open{display:flex}
+#modal{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  width:min(600px,95vw);max-height:80vh;display:flex;flex-direction:column;
+  box-shadow:0 24px 64px rgba(0,0,0,.5);
+}
+#modal-header{
+  display:flex;align-items:center;gap:12px;
+  padding:16px 20px;border-bottom:1px solid var(--border);
+}
+#modal-title{flex:1;font-weight:700;font-size:15px}
+#modal-close{
+  width:28px;height:28px;background:var(--card);border-radius:var(--radius-sm);
+  color:var(--text-2);display:flex;align-items:center;justify-content:center;
+  font-size:16px;cursor:pointer;transition:.15s;
+}
+#modal-close:hover{color:var(--text);background:var(--card-hover)}
+#modal-toolbar{
+  display:flex;align-items:center;gap:8px;
+  padding:10px 20px;border-bottom:1px solid var(--border);
+}
+.modal-btn-sm{
+  padding:5px 12px;border-radius:var(--radius-sm);font-size:12px;font-weight:600;
+  background:var(--card);color:var(--text-2);transition:.15s;
+}
+.modal-btn-sm:hover{color:var(--text);background:var(--card-hover)}
+#modal-items{flex:1;overflow-y:auto;padding:8px 0}
+.modal-item{
+  display:flex;align-items:center;gap:12px;padding:8px 20px;
+  border-bottom:1px solid var(--border);cursor:pointer;transition:.1s;
+}
+.modal-item:hover{background:var(--card)}
+.modal-item:last-child{border-bottom:none}
+.modal-item input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
+.modal-item-name{flex:1;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.modal-item-size{font-size:11px;color:var(--text-3);white-space:nowrap}
+#modal-footer{
+  display:flex;align-items:center;gap:10px;
+  padding:14px 20px;border-top:1px solid var(--border);
+}
+#modal-dl-btn{
+  flex:1;padding:10px;background:var(--accent);color:#fff;
+  border-radius:var(--radius-sm);font-weight:700;font-size:14px;transition:.15s;
+}
+#modal-dl-btn:hover{background:var(--accent-h)}
+#modal-cancel-btn{
+  padding:10px 20px;background:var(--card);color:var(--text-2);
+  border-radius:var(--radius-sm);font-weight:600;transition:.15s;
+}
+#modal-cancel-btn:hover{color:var(--text);background:var(--card-hover)}
+#modal-loading{
+  display:flex;align-items:center;justify-content:center;
+  padding:48px;color:var(--text-2);gap:12px;
+}
+.spinner{
+  width:20px;height:20px;border:2px solid var(--border);
+  border-top-color:var(--accent);border-radius:50%;
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Toast ───────────────────────────────────────────────────────────────── */
+#toast-container{
+  position:fixed;bottom:20px;right:20px;z-index:200;
+  display:flex;flex-direction:column;gap:8px;
+}
+.toast{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 16px;border-radius:var(--radius-sm);
+  background:var(--surface);border:1px solid var(--border);
+  font-size:13px;max-width:320px;
+  animation:slideIn .2s ease;box-shadow:0 4px 16px rgba(0,0,0,.4);
+}
+.toast.success{border-color:var(--success)}
+.toast.error  {border-color:var(--error)}
+.toast.warning{border-color:var(--warning)}
+.toast .t-icon{font-size:16px;flex-shrink:0}
+@keyframes slideIn{from{transform:translateX(20px);opacity:0}to{transform:translateX(0);opacity:1}}
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media(max-width:600px){
+  #header{padding:0 12px;gap:8px}
+  #url-bar,#tabs-bar,#content{padding-left:12px;padding-right:12px}
+  #total-speed{display:none}
+  .dl-name{max-width:calc(100% - 100px)}
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <header id="header">
+    <div class="logo">
+      <span class="icon">⬇</span>
+      Fetchr
+      <span class="v">v2.0</span>
+    </div>
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">Connecting…</span>
+    <div id="total-speed">↓ <span id="speed-val">0 B/s</span></div>
+  </header>
+
+  <!-- URL bar -->
+  <div id="url-bar">
+    <div class="url-row">
+      <input id="url-input" type="text" placeholder="Paste a URL or gallery link (Cyberdrop, Bunkr, GoFile, Imgur, Reddit…)" autocomplete="off" spellcheck="false">
+      <button id="url-btn" onclick="handleUrlBtn()">Download</button>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div id="tabs-bar">
+    <button class="tab active" onclick="switchTab('downloads', this)">Downloads</button>
+    <button class="tab" onclick="switchTab('history', this)">History</button>
+    <button class="tab" onclick="switchTab('settings', this)">Settings</button>
+    <button id="clear-btn" onclick="clearFinished()">Clear finished</button>
+  </div>
+
+  <!-- Content -->
+  <div id="content">
+    <div id="tab-downloads"></div>
+    <div id="tab-history"  style="display:none"></div>
+    <div id="tab-settings" style="display:none"></div>
+  </div>
+
+</div>
+
+<!-- Scrape Modal -->
+<div id="modal-overlay">
+  <div id="modal">
+    <div id="modal-header">
+      <span id="modal-title">Scanning…</span>
+      <div id="modal-close" onclick="closeModal()">✕</div>
+    </div>
+    <div id="modal-toolbar" style="display:none">
+      <button class="modal-btn-sm" onclick="selectAll(true)">Select all</button>
+      <button class="modal-btn-sm" onclick="selectAll(false)">Deselect all</button>
+      <span id="modal-selected" style="margin-left:auto;font-size:12px;color:var(--text-2)"></span>
+    </div>
+    <div id="modal-items">
+      <div id="modal-loading"><div class="spinner"></div> Scraping page…</div>
+    </div>
+    <div id="modal-footer" style="display:none">
+      <button id="modal-cancel-btn" onclick="closeModal()">Cancel</button>
+      <button id="modal-dl-btn" onclick="downloadSelected()">Download selected</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<script>
+'use strict';
+
+// ── State ──────────────────────────────────────────────────────────────────
+const BASE    = window.location.origin;
+const WS_URL  = `ws://${window.location.host}/ws`;
+let downloads = {};          // id → download object
+let wsConn    = null;
+let wsTimer   = null;
+let agentOnline = false;
+let settings  = {};
+let history   = [];
+let scrapeItems = [];        // items from last scrape
+let currentTab = 'downloads';
+
+// ── Formatting ─────────────────────────────────────────────────────────────
+function fmtBytes(b) {
+  if (!b || b <= 0) return '0 B';
+  const u = ['B','KB','MB','GB','TB'];
+  const i = Math.floor(Math.log(b) / Math.log(1024));
+  return (b / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + u[i];
+}
+function fmtSpeed(bps) {
+  if (!bps || bps <= 0) return '';
+  return fmtBytes(bps) + '/s';
+}
+function fmtEta(s) {
+  if (!s || s <= 0) return '';
+  if (s < 60)  return `${s}s`;
+  if (s < 3600) return `${Math.floor(s/60)}m ${s%60}s`;
+  return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`;
+}
+function fmtDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+}
+function fileIcon(name) {
+  if (!name) return '🔗';
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  if (['mp4','mkv','webm','avi','mov','flv','m4v','ts'].includes(ext)) return '📹';
+  if (['mp3','m4a','flac','wav','ogg','opus','aac'].includes(ext))     return '🎵';
+  if (['zip','rar','7z','tar','gz','bz2','xz','iso'].includes(ext))    return '📦';
+  if (['jpg','jpeg','png','gif','webp','svg','bmp'].includes(ext))     return '🖼';
+  if (['pdf','doc','docx','xls','xlsx','ppt','pptx'].includes(ext))    return '📄';
+  if (['exe','msi','dmg','pkg','deb','rpm','apk'].includes(ext))       return '⚙️';
+  return '🔗';
+}
+
+// ── Gallery domains ─────────────────────────────────────────────────────────
+const SCRAPE_DOMAINS = [
+  'cyberdrop.me','cyberdrop.cc',
+  'bunkr.site','bunkr.black','bunkr.cr','bunkr.fi','bunkr.ph','bunkr.sk',
+  'gofile.io','pixeldrain.com',
+  'imgur.com','reddit.com','redd.it',
+];
+function isScrapeUrl(url) {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '');
+    return SCRAPE_DOMAINS.some(d => host === d || host.endsWith('.'+d));
+  } catch { return false; }
+}
+
+// ── URL input smart detection ───────────────────────────────────────────────
+const urlInput = document.getElementById('url-input');
+const urlBtn   = document.getElementById('url-btn');
+
+urlInput.addEventListener('input', () => {
+  const url = urlInput.value.trim();
+  if (isScrapeUrl(url)) {
+    urlBtn.textContent = 'Scrape';
+    urlBtn.className   = 'scrape';
+    urlBtn.id          = 'url-btn';
+  } else {
+    urlBtn.textContent = 'Download';
+    urlBtn.className   = '';
+    urlBtn.id          = 'url-btn';
+  }
+});
+urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') handleUrlBtn(); });
+
+async function handleUrlBtn() {
+  const url = urlInput.value.trim();
+  if (!url) return;
+  if (isScrapeUrl(url)) {
+    await openScrapeModal(url);
+  } else {
+    await addDownload(url);
+    urlInput.value = '';
+    urlBtn.textContent = 'Download';
+    urlBtn.className   = '';
+  }
+}
+
+// ── WebSocket ───────────────────────────────────────────────────────────────
+function connectWS() {
+  wsConn = new WebSocket(WS_URL);
+  wsConn.onopen = () => {
+    clearTimeout(wsTimer);
+    setAgentStatus(true);
+  };
+  wsConn.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'snapshot') {
+      downloads = {};
+      (msg.data || []).forEach(d => downloads[d.id] = d);
+    } else if (msg.type === 'progress') {
+      downloads[msg.data.id] = msg.data;
+    }
+    if (currentTab === 'downloads') renderDownloads();
+    updateTotalSpeed();
+  };
+  wsConn.onclose = () => {
+    setAgentStatus(false);
+    wsTimer = setTimeout(connectWS, 3000);
+  };
+  wsConn.onerror = () => wsConn.close();
+}
+
+function setAgentStatus(online) {
+  agentOnline = online;
+  document.getElementById('status-dot').className  = 'status-dot' + (online ? ' online' : '');
+  document.getElementById('status-text').textContent = online ? 'Online' : 'Offline';
+}
+
+function updateTotalSpeed() {
+  const total = Object.values(downloads)
+    .filter(d => d.status === 'active')
+    .reduce((s, d) => s + (d.speed || 0), 0);
+  document.getElementById('speed-val').textContent = fmtSpeed(total) || '0 B/s';
+}
+
+// ── Tab switching ───────────────────────────────────────────────────────────
+function switchTab(name, el) {
+  currentTab = name;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  ['downloads','history','settings'].forEach(t => {
+    document.getElementById('tab-' + t).style.display = t === name ? '' : 'none';
+  });
+  if (name === 'history')  fetchHistory();
+  if (name === 'settings') fetchSettings();
+}
+
+// ── Render Downloads ────────────────────────────────────────────────────────
+function renderDownloads() {
+  const all  = Object.values(downloads);
+  const groups = {
+    active:    all.filter(d => d.status === 'active'),
+    queued:    all.filter(d => d.status === 'queued'),
+    paused:    all.filter(d => d.status === 'paused'),
+    complete:  all.filter(d => d.status === 'complete'),
+    error:     all.filter(d => d.status === 'error'),
+    cancelled: all.filter(d => d.status === 'cancelled'),
+  };
+
+  let html = '';
+
+  if (all.length === 0) {
+    html = `<div class="empty">
+      <span class="icon">⬇</span>
+      <p>No downloads yet. Paste a URL above or use the browser extension.</p>
+    </div>`;
+  } else {
+    const renderGroup = (label, items, showBar = true) => {
+      if (!items.length) return '';
+      let out = `<div class="section-label">${label} <span style="color:var(--text-2);font-weight:400;font-size:10px">${items.length}</span></div>`;
+      items.forEach(d => { out += renderCard(d, showBar); });
+      return out;
+    };
+    html += renderGroup('Active',    groups.active);
+    html += renderGroup('Queued',    groups.queued,    false);
+    html += renderGroup('Paused',    groups.paused);
+    html += renderGroup('Failed',    groups.error,     false);
+    html += renderGroup('Completed', groups.complete,  false);
+    html += renderGroup('Cancelled', groups.cancelled, false);
+  }
+
+  document.getElementById('tab-downloads').innerHTML = html;
+}
+
+function renderCard(d, showBar) {
+  const icon = fileIcon(d.filename);
+  const pct  = d.progress ? d.progress.toFixed(0) + '%' : '';
+  const statusClass = {
+    active:'shimmer', complete:'complete', error:'error',
+    paused:'paused', queued:'', cancelled:''
+  }[d.status] || '';
+
+  let barHtml = '';
+  if (showBar || ['active','paused'].includes(d.status)) {
+    barHtml = `<div class="dl-bar-wrap">
+      <div class="dl-bar ${statusClass}" style="width:${Math.min(100, d.progress || 0)}%"></div>
+    </div>`;
+  }
+
+  let statsHtml = '';
+  if (d.status === 'active') {
+    statsHtml = `
+      <span class="stat">${fmtSpeed(d.speed)}</span>
+      ${d.total ? `<span class="stat">${fmtBytes(d.downloaded)} / ${fmtBytes(d.total)}</span>` : `<span class="stat">${fmtBytes(d.downloaded)}</span>`}
+      ${d.eta ? `<span class="stat">ETA ${fmtEta(d.eta)}</span>` : ''}
+    `;
+  } else if (d.status === 'complete') {
+    statsHtml = `<span class="stat" style="color:var(--success)">✓ Done</span>${d.total ? `<span class="stat">${fmtBytes(d.total)}</span>` : ''}`;
+  } else if (d.status === 'paused') {
+    statsHtml = `<span class="badge paused">Paused</span>${d.downloaded ? `<span class="stat">${fmtBytes(d.downloaded)} / ${fmtBytes(d.total)}</span>` : ''}`;
+  } else if (d.status === 'queued') {
+    statsHtml = `<span class="badge queued">Queued</span>`;
+  } else if (d.status === 'error') {
+    statsHtml = `<span class="badge error">Failed</span>`;
+  } else if (d.status === 'cancelled') {
+    statsHtml = `<span class="badge cancelled">Cancelled</span>`;
+  }
+
+  let actions = '';
+  if (d.status === 'active')  actions += `<button class="dl-btn" title="Pause"  onclick="pauseDl('${d.id}')">⏸</button>`;
+  if (d.status === 'paused')  actions += `<button class="dl-btn" title="Resume" onclick="resumeDl('${d.id}')">▶</button>`;
+  if (['active','queued','paused'].includes(d.status))
+    actions += `<button class="dl-btn danger" title="Cancel" onclick="cancelDl('${d.id}')">✕</button>`;
+
+  let errHtml = '';
+  if (d.error && d.status === 'error')
+    errHtml = `<div class="dl-err">${escHtml(d.error)}</div>`;
+
+  return `<div class="dl-card" id="card-${d.id}">
+    <div class="dl-row1">
+      <span class="dl-icon">${icon}</span>
+      <span class="dl-name" title="${escHtml(d.filename)}">${escHtml(d.filename)}</span>
+      <span class="dl-pct">${pct}</span>
+    </div>
+    ${barHtml}
+    <div class="dl-row3">
+      ${statsHtml}
+      <span class="spacer"></span>
+      <div class="dl-actions">${actions}</div>
+    </div>
+    ${errHtml}
+  </div>`;
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Download actions ────────────────────────────────────────────────────────
+async function addDownload(url, opts = {}) {
+  try {
+    const body = { url, ...opts };
+    const r = await fetch(`${BASE}/downloads`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (data.skipped) {
+      showToast('Already downloaded — skipping', 'warning');
+    } else {
+      downloads[data.id] = data;
+      renderDownloads();
+      showToast(`Added: ${data.filename}`, 'success');
+    }
+    return data;
+  } catch(e) {
+    showToast('Failed to add download: ' + e.message, 'error');
+  }
+}
+
+async function pauseDl(id) {
+  await fetch(`${BASE}/downloads/${id}/pause`, {method:'POST'});
+}
+async function resumeDl(id) {
+  await fetch(`${BASE}/downloads/${id}/resume`, {method:'POST'});
+}
+async function cancelDl(id) {
+  await fetch(`${BASE}/downloads/${id}`, {method:'DELETE'});
+  delete downloads[id];
+  renderDownloads();
+}
+async function clearFinished() {
+  await fetch(`${BASE}/downloads/clear-finished`, {method:'POST'});
+  Object.keys(downloads).forEach(id => {
+    if (['complete','cancelled','error'].includes(downloads[id].status))
+      delete downloads[id];
+  });
+  renderDownloads();
+  showToast('Cleared finished downloads', 'success');
+}
+
+// ── Scrape Modal ─────────────────────────────────────────────────────────────
+async function openScrapeModal(url) {
+  scrapeItems = [];
+  document.getElementById('modal-title').textContent = 'Scanning…';
+  document.getElementById('modal-toolbar').style.display = 'none';
+  document.getElementById('modal-footer').style.display  = 'none';
+  document.getElementById('modal-items').innerHTML = `<div id="modal-loading"><div class="spinner"></div> Scraping page…</div>`;
+  document.getElementById('modal-overlay').classList.add('open');
+
+  try {
+    const r = await fetch(`${BASE}/scrape`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({url}),
+    });
+    const data = await r.json();
+    scrapeItems = data.items || [];
+
+    const host = (() => { try { return new URL(url).hostname; } catch { return url; } })();
+    document.getElementById('modal-title').textContent = `Found ${scrapeItems.length} item${scrapeItems.length !== 1 ? 's' : ''} · ${host}`;
+
+    if (scrapeItems.length === 0) {
+      document.getElementById('modal-items').innerHTML = `<div class="empty" style="padding:32px"><span class="icon" style="font-size:28px">🔍</span><p>No downloadable items found</p></div>`;
+      document.getElementById('modal-footer').style.display = 'flex';
+      return;
+    }
+
+    document.getElementById('modal-toolbar').style.display = 'flex';
+    document.getElementById('modal-footer').style.display  = 'flex';
+
+    let itemsHtml = scrapeItems.map((item, i) => `
+      <div class="modal-item" onclick="toggleItem(${i})">
+        <input type="checkbox" id="mi-${i}" checked onclick="event.stopPropagation();updateModalCount()">
+        <span class="modal-item-name">${escHtml(item.filename || item.url)}</span>
+        ${item.size ? `<span class="modal-item-size">${fmtBytes(item.size)}</span>` : ''}
+      </div>
+    `).join('');
+    document.getElementById('modal-items').innerHTML = itemsHtml;
+    updateModalCount();
+  } catch(e) {
+    document.getElementById('modal-items').innerHTML = `<div class="empty" style="padding:32px"><p style="color:var(--error)">Scrape failed: ${escHtml(e.message)}</p></div>`;
+    document.getElementById('modal-footer').style.display = 'flex';
+  }
+}
+
+function toggleItem(i) {
+  const cb = document.getElementById(`mi-${i}`);
+  if (cb) { cb.checked = !cb.checked; updateModalCount(); }
+}
+function selectAll(checked) {
+  scrapeItems.forEach((_, i) => {
+    const cb = document.getElementById(`mi-${i}`);
+    if (cb) cb.checked = checked;
+  });
+  updateModalCount();
+}
+function updateModalCount() {
+  const selected = scrapeItems.filter((_, i) => {
+    const cb = document.getElementById(`mi-${i}`);
+    return cb && cb.checked;
+  }).length;
+  document.getElementById('modal-selected').textContent = `${selected} selected`;
+  document.getElementById('modal-dl-btn').textContent = `Download ${selected} item${selected !== 1 ? 's' : ''}`;
+}
+async function downloadSelected() {
+  const selected = scrapeItems.filter((_, i) => {
+    const cb = document.getElementById(`mi-${i}`);
+    return cb && cb.checked;
+  });
+  if (!selected.length) return;
+
+  closeModal();
+  urlInput.value = '';
+
+  try {
+    const r = await fetch(`${BASE}/downloads/batch`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ items: selected }),
+    });
+    const data = await r.json();
+    showToast(`Queued ${data.added} download${data.added !== 1 ? 's' : ''}${data.skipped ? ` (${data.skipped} skipped — already downloaded)` : ''}`, 'success');
+  } catch(e) {
+    showToast('Batch download failed: ' + e.message, 'error');
+  }
+}
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+}
+
+// ── History ──────────────────────────────────────────────────────────────────
+async function fetchHistory() {
+  try {
+    const r = await fetch(`${BASE}/history`);
+    history = await r.json();
+    renderHistory();
+  } catch(e) {
+    document.getElementById('tab-history').innerHTML = `<p style="color:var(--error);padding:20px">Failed to load history: ${e.message}</p>`;
+  }
+}
+
+function renderHistory() {
+  const el = document.getElementById('tab-history');
+  if (!history.length) {
+    el.innerHTML = `<div class="empty"><span class="icon">📋</span><p>No download history yet.</p></div>`;
+    return;
+  }
+  el.innerHTML = `<table class="history-table">
+    <thead><tr>
+      <th>File</th><th>Size</th><th>Date</th><th>URL</th>
+    </tr></thead>
+    <tbody>
+      ${history.map(h => `<tr>
+        <td class="filename">${fileIcon(h.filename)} ${escHtml(h.filename || '—')}</td>
+        <td>${h.file_size ? fmtBytes(h.file_size) : '—'}</td>
+        <td>${fmtDate(h.downloaded_at)}</td>
+        <td><a class="url" href="${escHtml(h.url)}" target="_blank" title="${escHtml(h.url)}">${escHtml(h.url)}</a></td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+
+// ── Settings ─────────────────────────────────────────────────────────────────
+async function fetchSettings() {
+  try {
+    const r = await fetch(`${BASE}/settings`);
+    settings = await r.json();
+    renderSettings();
+  } catch {}
+}
+
+function renderSettings() {
+  const el = document.getElementById('tab-settings');
+  el.innerHTML = `
+    <div class="settings-section">
+      <h3>Download</h3>
+      <div class="field">
+        <label>Save path</label>
+        <input type="text" id="s-save-path" value="${escHtml(settings.save_path || '')}">
+      </div>
+      <div class="field">
+        <label>Max concurrent downloads</label>
+        <input type="number" id="s-max-concurrent" value="${settings.max_concurrent || 3}" min="1" max="20" style="width:80px">
+      </div>
+      <div class="field">
+        <label>Speed limit (KB/s, 0 = unlimited)</label>
+        <input type="number" id="s-max-speed" value="${settings.max_speed_kbps || 0}" min="0" style="width:120px">
+      </div>
+      <div class="field">
+        <label>Cookie source browser</label>
+        <select id="s-browser">
+          <option value="chrome"  ${settings.cookies_browser==='chrome'  ?'selected':''}>Chrome</option>
+          <option value="firefox" ${settings.cookies_browser==='firefox' ?'selected':''}>Firefox</option>
+          <option value="edge"    ${settings.cookies_browser==='edge'    ?'selected':''}>Edge</option>
+          <option value="safari"  ${settings.cookies_browser==='safari'  ?'selected':''}>Safari</option>
+        </select>
+      </div>
+    </div>
+    <div class="settings-section">
+      <h3>Features</h3>
+      ${toggle('s-intercept', 'Intercept all browser downloads', 'Automatically redirect every browser download to Fetchr', settings.intercept_all)}
+      ${toggle('s-hash',      'Hash-based deduplication', 'Check file hashes to skip duplicate files (slower but thorough)', settings.hash_check)}
+      ${toggle('s-extract',   'Auto-extract archives', 'Unzip/unrar files automatically after download', settings.auto_extract)}
+      ${toggle('s-organise',  'Organise by file type', 'Sort completed downloads into Images/, Videos/, etc.', settings.organise_by_type)}
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <button id="save-settings-btn" onclick="saveSettings()">Save settings</button>
+      <span id="settings-saved">✓ Saved</span>
+    </div>
+  `;
+}
+
+function toggle(id, label, desc, checked) {
+  return `<div class="toggle-row">
+    <div>
+      <div class="toggle-label">${escHtml(label)}</div>
+      <div class="toggle-desc">${escHtml(desc)}</div>
+    </div>
+    <label class="toggle">
+      <input type="checkbox" id="${id}" ${checked ? 'checked' : ''}>
+      <span class="toggle-slider"></span>
+    </label>
+  </div>`;
+}
+
+async function saveSettings() {
+  const body = {
+    save_path:        document.getElementById('s-save-path').value,
+    max_concurrent:   parseInt(document.getElementById('s-max-concurrent').value),
+    max_speed_kbps:   parseInt(document.getElementById('s-max-speed').value),
+    cookies_browser:  document.getElementById('s-browser').value,
+    intercept_all:    document.getElementById('s-intercept').checked,
+    hash_check:       document.getElementById('s-hash').checked,
+    auto_extract:     document.getElementById('s-extract').checked,
+    organise_by_type: document.getElementById('s-organise').checked,
+  };
+  try {
+    const r = await fetch(`${BASE}/settings`, {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    settings = await r.json();
+    const savedEl = document.getElementById('settings-saved');
+    savedEl.style.opacity = '1';
+    setTimeout(() => savedEl.style.opacity = '0', 2000);
+  } catch(e) {
+    showToast('Failed to save settings', 'error');
+  }
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg, type = 'success') {
+  const icons = {success:'✅', error:'❌', warning:'⚠️'};
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span class="t-icon">${icons[type]||'ℹ️'}</span><span>${escHtml(msg)}</span>`;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+connectWS();
+fetchSettings();
+renderDownloads();
+</script>
+</body>
+</html>
