@@ -9,6 +9,10 @@ from .gofile import GoFileScraper
 from .pixeldrain import PixelDrainScraper
 from .imgur import ImgurScraper
 from .reddit import RedditScraper
+from .kemono import KemonoScraper
+from .coomer import CoomerScraper
+from .erome import EromeScraper
+from .saint2 import Saint2Scraper
 
 SCRAPERS = [
     CyberdropScraper,
@@ -17,6 +21,10 @@ SCRAPERS = [
     PixelDrainScraper,
     ImgurScraper,
     RedditScraper,
+    KemonoScraper,
+    CoomerScraper,
+    EromeScraper,
+    Saint2Scraper,
 ]
 
 

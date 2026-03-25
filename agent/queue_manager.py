@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Callable, Awaitable
 
 import database as db
+import notifications
+import organizer
 
 
 class DownloadStatus(str, Enum):
@@ -165,15 +167,37 @@ class QueueManager:
                     self._release_slot()
                     # Persist final state
                     await db.save_download(it.to_dict())
-                    # On completion, add to history for dedup
+
                     if it.status == DownloadStatus.COMPLETE:
                         file_path = Path(it.save_path) / it.filename
                         file_size = file_path.stat().st_size if file_path.exists() else 0
+
+                        # URL history for dedup
                         await db.add_to_history(
                             url       = it.url,
                             filename  = it.filename,
                             save_path = it.save_path,
                             file_size = file_size,
+                        )
+
+                        # Post-download processing (extract + organise)
+                        settings = _get_settings()
+                        processed = await organizer.process_download(
+                            file_path,
+                            auto_extract = settings.get("auto_extract", False),
+                            organise     = settings.get("organise_by_type", False),
+                        )
+
+                        # Push notification
+                        await notifications.notify_complete(
+                            filename  = it.filename,
+                            file_size = file_size,
+                        )
+
+                    elif it.status == DownloadStatus.ERROR:
+                        await notifications.notify_error(
+                            filename = it.filename,
+                            error    = it.error or "",
                         )
 
             item._task = asyncio.create_task(run_and_release(item))
@@ -286,3 +310,14 @@ class QueueManager:
 
     async def notify_item(self, item: DownloadItem):
         await self._notify(item)
+
+
+# ── Settings bridge ───────────────────────────────────────────────────────────
+# Lazy import to avoid circular dependency — main.py sets this at startup.
+
+def _get_settings() -> dict:
+    try:
+        import main as _main
+        return _main._settings
+    except Exception:
+        return {}
