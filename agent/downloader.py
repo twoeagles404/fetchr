@@ -42,6 +42,7 @@ except ImportError:
 
 from queue_manager import DownloadItem, DownloadStatus
 from rate_limiter import domain_limiter
+from aria2_rpc import aria2
 
 # ── Tuning ───────────────────────────────────────────────────────────────────
 ARIA2C_CONNECTIONS = 16
@@ -193,9 +194,26 @@ async def _do_download(
 # ── Direct download dispatcher ───────────────────────────────────────────────
 
 async def _download_direct(item: DownloadItem, notify):
-    if ARIA2C_BIN:
+    # Prefer RPC daemon (real pause/resume/cancel) over subprocess
+    if aria2.available:
         try:
-            await _aria2c_download(
+            await _aria2c_rpc_download(
+                item, notify,
+                url      = item.url,
+                filename = item.filename,
+                dest_dir = item.save_path,
+            )
+            return
+        except RuntimeError as e:
+            err = str(e)
+            if any(tag in err for tag in ["code 3", "code 9", "code 19", "404", "Not Found"]):
+                raise
+            print(f"⚠️   aria2c RPC failed ({e}), trying yt-dlp…")
+
+    # Subprocess fallback (aria2c available but RPC not started)
+    elif ARIA2C_BIN:
+        try:
+            await _aria2c_subprocess_download(
                 item, notify,
                 url      = item.url,
                 filename = item.filename,
@@ -217,10 +235,92 @@ async def _download_direct(item: DownloadItem, notify):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  aria2c core
+#  aria2c — RPC daemon mode (primary)
 # ══════════════════════════════════════════════════════════════════════════════
 
-async def _aria2c_download(item, notify, url, filename, dest_dir, extra_args=None):
+async def _aria2c_rpc_download(item, notify, url, filename, dest_dir,
+                                extra_headers=None):
+    """
+    Download via the aria2c RPC daemon.
+    Real pause/resume/cancel — no stdout parsing, no zombie processes.
+    """
+    dest_dir   = Path(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    final_path = dest_dir / filename
+    part_path  = dest_dir / (filename + ".part")
+
+    await domain_limiter.acquire(url)
+
+    gid = await aria2.add_uri(
+        url           = url,
+        filename      = filename,
+        dest_dir      = str(dest_dir),
+        referer       = item.referer,
+        cookies       = item.cookies,
+        extra_headers = extra_headers,
+    )
+
+    item.segments = ARIA2C_CONNECTIONS
+
+    try:
+        while True:
+            # Cancellation
+            if item.status == DownloadStatus.CANCELLED:
+                await aria2.remove(gid)
+                part_path.unlink(missing_ok=True)
+                return
+
+            # Pause — tell aria2c to stop writing, then wait for resume signal
+            if item.status == DownloadStatus.PAUSED:
+                await aria2.pause(gid)
+                await item._pause_event.wait()
+                if item.status != DownloadStatus.CANCELLED:
+                    await aria2.unpause(gid)
+
+            status = await aria2.tell_status(gid)
+            state  = status.get("status", "")
+
+            if state == "complete":
+                # Rename .part → final filename
+                if part_path.exists():
+                    part_path.rename(final_path)
+                item.progress = 100.0
+                break
+
+            elif state == "error":
+                err_msg = status.get("errorMessage") or f"code {status.get('errorCode','?')}"
+                raise RuntimeError(f"aria2c error: {err_msg}")
+
+            elif state == "removed":
+                item.status = DownloadStatus.CANCELLED
+                return
+
+            else:  # active / waiting / paused
+                completed = int(status.get("completedLength", 0))
+                total     = int(status.get("totalLength",     0))
+                speed     = int(status.get("downloadSpeed",   0))
+
+                item.downloaded = completed
+                item.total      = total
+                item.speed      = float(speed)
+                item.progress   = (completed / total * 100) if total else 0.0
+                item.eta        = int((total - completed) / speed) \
+                                  if speed > 0 and total > completed else 0
+                await notify(item)
+
+            await asyncio.sleep(0.5)
+
+    except asyncio.CancelledError:
+        await aria2.remove(gid)
+        raise
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  aria2c — subprocess fallback (when RPC daemon is not running)
+# ══════════════════════════════════════════════════════════════════════════════
+
+async def _aria2c_subprocess_download(item, notify, url, filename, dest_dir, extra_args=None):
     """
     Run aria2c as an async subprocess with real-time progress parsing.
     Writes to filename.part — renames to filename on clean exit.
@@ -530,7 +630,7 @@ async def _media_via_aria2c(item, notify, loop, dest_dir):
                     for k, v in fmt.get("http_headers", {}).items()
                     if k.lower() != "user-agent"]
         item.filename = filename
-        await _aria2c_download(item, notify, fmt["url"], filename, str(dest_dir), extra)
+        await _aria2c_subprocess_download(item, notify, fmt["url"], filename, str(dest_dir), extra)
     else:
         parts = []
         for i, fmt in enumerate(urls_to_download):
@@ -540,7 +640,7 @@ async def _media_via_aria2c(item, notify, loop, dest_dir):
                      for k, v in fmt.get("http_headers", {}).items()
                      if k.lower() != "user-agent"]
             shadow = _shadow_item(item, part_name)
-            await _aria2c_download(shadow, notify, fmt["url"], part_name,
+            await _aria2c_subprocess_download(shadow, notify, fmt["url"], part_name,
                                    str(dest_dir), extra)
             item.downloaded = shadow.downloaded
             item.total      = shadow.total

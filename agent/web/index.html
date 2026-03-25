@@ -829,6 +829,17 @@ function renderSettings() {
       ${toggle('s-extract',   'Auto-extract archives', 'Unzip/unrar files automatically after download', settings.auto_extract)}
       ${toggle('s-organise',  'Organise by file type', 'Sort completed downloads into Images/, Videos/, etc.', settings.organise_by_type)}
     </div>
+    <div class="settings-section">
+      <h3>Notifications</h3>
+      <div class="field">
+        <label>Notification URL <span style="font-weight:400;color:var(--text-3)">(Apprise format)</span></label>
+        <input type="text" id="s-notif-url" value="${escHtml(settings.notification_url || '')}"
+          placeholder="ntfys://ntfy.sh/my-topic  ·  gotify://server/token  ·  tgram://bottoken/chatid">
+        <div style="margin-top:6px;font-size:11px;color:var(--text-3)">
+          Supports ntfy · Gotify · Telegram · Discord · Slack · email and 70+ more. Leave blank to disable.
+        </div>
+      </div>
+    </div>
     <div style="display:flex;align-items:center;gap:12px">
       <button id="save-settings-btn" onclick="saveSettings()">Save settings</button>
       <span id="settings-saved">✓ Saved</span>

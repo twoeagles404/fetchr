@@ -29,6 +29,8 @@ from pydantic import BaseModel
 
 from queue_manager import QueueManager, DownloadType, DownloadStatus
 import database as db
+import notifications
+from aria2_rpc import aria2
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -80,13 +82,26 @@ async def websocket_endpoint(ws: WebSocket):
 
 @app.on_event("startup")
 async def startup():
+    # aria2c RPC daemon — start before the queue so downloads can use it immediately
+    await aria2.start_daemon()
+
     queue.on_progress(_broadcast)
-    await queue.start()                        # async: inits DB + restores pending
+    await queue.start()
     Path(DEFAULT_SAVE_PATH).mkdir(parents=True, exist_ok=True)
     WEB_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Configure notifications from saved settings
+    if _settings.get("notification_url"):
+        notifications.configure(_settings["notification_url"])
+
     print(f"\n✅  Fetchr agent v2.0 listening on http://0.0.0.0:{PORT}")
     print(f"   Web UI:      http://localhost:{PORT}/")
     print(f"   Save folder: {DEFAULT_SAVE_PATH}\n")
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    await aria2.stop_daemon()
 
 
 # ── Web UI ────────────────────────────────────────────────────────────────────
@@ -119,10 +134,11 @@ _settings = {
     "max_concurrent":       3,
     "max_speed_kbps":       0,
     "intercept_all":        True,
-    "cookies_browser":      "chrome",     # NEW: which browser to pull cookies from
-    "hash_check":           False,        # NEW: enable hash-based dedup (slower)
-    "auto_extract":         False,        # NEW: unzip/unrar after download
-    "organise_by_type":     False,        # NEW: sort into Images/ Videos/ etc.
+    "cookies_browser":      "chrome",
+    "hash_check":           False,
+    "auto_extract":         False,
+    "organise_by_type":     False,
+    "notification_url":     "",           # NEW: Apprise URL (ntfy, Gotify, Telegram…)
 }
 
 
@@ -156,6 +172,7 @@ class SettingsUpdate(BaseModel):
     hash_check:         Optional[bool] = None
     auto_extract:       Optional[bool] = None
     organise_by_type:   Optional[bool] = None
+    notification_url:   Optional[str]  = None
 
 
 @app.put("/settings")
@@ -163,13 +180,16 @@ async def update_settings(body: SettingsUpdate):
     if body.save_path         is not None: _settings["save_path"]         = body.save_path
     if body.max_concurrent    is not None:
         _settings["max_concurrent"] = body.max_concurrent
-        queue.max_concurrent         = body.max_concurrent   # live update (fixed bug)
+        queue.max_concurrent         = body.max_concurrent
     if body.max_speed_kbps    is not None: _settings["max_speed_kbps"]    = body.max_speed_kbps
     if body.intercept_all     is not None: _settings["intercept_all"]     = body.intercept_all
     if body.cookies_browser   is not None: _settings["cookies_browser"]   = body.cookies_browser
     if body.hash_check        is not None: _settings["hash_check"]        = body.hash_check
     if body.auto_extract      is not None: _settings["auto_extract"]      = body.auto_extract
     if body.organise_by_type  is not None: _settings["organise_by_type"]  = body.organise_by_type
+    if body.notification_url  is not None:
+        _settings["notification_url"] = body.notification_url
+        notifications.configure(body.notification_url)   # apply immediately
     _save_settings()
     return _settings
 
