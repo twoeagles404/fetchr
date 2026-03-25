@@ -1,5 +1,21 @@
+# Fetchr Agent — Python dependencies
+# Install:  pip install -r requirements.txt
+
+# ── Web server ─────────────────────────────────────────────────────────────
 fastapi>=0.111.0
 uvicorn[standard]>=0.29.0
+
+# ── HTTP client ────────────────────────────────────────────────────────────
 aiohttp>=3.9.0
+
+# ── Media downloader ───────────────────────────────────────────────────────
 yt-dlp>=2024.5.1
+
+# ── Data validation ────────────────────────────────────────────────────────
 pydantic>=2.0.0
+
+# ── Database (persistent queue + history) ──────────────────────────────────
+aiosqlite>=0.20.0
+
+# ── HTML scraping (gallery site crawlers) ──────────────────────────────────
+beautifulsoup4>=4.12.0

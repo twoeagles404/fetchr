@@ -10,7 +10,7 @@ VENV_DIR="$SCRIPT_DIR/.venv"
 
 echo ""
 echo "╔══════════════════════════════════════╗"
-echo "║        Fetchr Agent Installer        ║"
+echo "║     Fetchr Agent Installer v2.0     ║"
 echo "╚══════════════════════════════════════╝"
 echo ""
 
@@ -129,11 +129,20 @@ else
 fi
 
 echo ""
-echo "════════════════════════════════════════"
-echo "  Fetchr agent running at:"
-echo "  http://127.0.0.1:9876"
+LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+
 echo ""
-echo "  Next: load the extension/  folder in"
-echo "  Chrome → chrome://extensions (dev mode)"
+echo "════════════════════════════════════════"
+echo "  ✅ Fetchr agent v2.0 is running!"
+echo ""
+echo "  Web UI (any device on your network):"
+echo "  http://${LOCAL_IP}:9876/"
+echo ""
+echo "  Local only:"
+echo "  http://127.0.0.1:9876/"
+echo ""
+echo "  Browser extension:"
+echo "  Load extension/ folder in Chrome"
+echo "  chrome://extensions → Developer mode"
 echo "════════════════════════════════════════"
 echo ""

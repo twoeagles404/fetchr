@@ -1,9 +1,17 @@
 """
-Fetchr Local Agent
-FastAPI server + WebSocket broadcaster for the browser extension.
+Fetchr Local Agent  v2.0
+FastAPI server + WebSocket broadcaster + Web UI
+
+New in v2:
+  • Serves a full web UI at http://[host]:9876/
+    — accessible from any device on your network
+  • POST /scrape   — gallery/batch link grabber (CDL-inspired)
+  • GET  /history  — download history
+  • DELETE /history/{url} — remove a history entry
+  • Async queue.start() with DB init and pending-download recovery
 
 Run with:  python main.py
-Or:        uvicorn main:app --host 127.0.0.1 --port 9876 --reload
+Or:        uvicorn main:app --host 0.0.0.0 --port 9876
 """
 
 import asyncio
@@ -16,24 +24,22 @@ from typing import Optional, Set
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 from queue_manager import QueueManager, DownloadType, DownloadStatus
+import database as db
 
-# ------------------------------------------------------------------ #
-# Config                                                               #
-# ------------------------------------------------------------------ #
+# ── Config ────────────────────────────────────────────────────────────────────
 
 DEFAULT_SAVE_PATH = str(Path.home() / "Downloads" / "Fetchr")
 PORT = int(os.environ.get("FETCHR_PORT", 9876))
+WEB_DIR = Path(__file__).parent / "web"
 
-# ------------------------------------------------------------------ #
-# App setup                                                            #
-# ------------------------------------------------------------------ #
+# ── App ───────────────────────────────────────────────────────────────────────
 
-app = FastAPI(title="Fetchr Agent", version="1.0.0")
+app = FastAPI(title="Fetchr Agent", version="2.0.0")
 
-# Allow the browser extension (chrome-extension://*) to reach us
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -45,12 +51,9 @@ app.add_middleware(
 queue = QueueManager(max_concurrent=3)
 _ws_clients: Set[WebSocket] = set()
 
-# ------------------------------------------------------------------ #
-# WebSocket broadcaster                                                #
-# ------------------------------------------------------------------ #
+# ── WebSocket ─────────────────────────────────────────────────────────────────
 
 async def _broadcast(payload: dict):
-    """Send a progress update to all connected WebSocket clients."""
     dead = set()
     msg = json.dumps({"type": "progress", "data": payload})
     for ws in list(_ws_clients):
@@ -65,39 +68,61 @@ async def _broadcast(payload: dict):
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
     _ws_clients.add(ws)
-    # Send current queue snapshot on connect
     await ws.send_text(json.dumps({"type": "snapshot", "data": queue.list_all()}))
     try:
         while True:
-            await ws.receive_text()   # keep-alive / accept pings
+            await ws.receive_text()
     except WebSocketDisconnect:
         _ws_clients.discard(ws)
 
 
-# ------------------------------------------------------------------ #
-# Startup                                                              #
-# ------------------------------------------------------------------ #
+# ── Startup ───────────────────────────────────────────────────────────────────
 
 @app.on_event("startup")
 async def startup():
     queue.on_progress(_broadcast)
-    queue.start()
+    await queue.start()                        # async: inits DB + restores pending
     Path(DEFAULT_SAVE_PATH).mkdir(parents=True, exist_ok=True)
-    print(f"\n✅  Fetchr agent listening on http://127.0.0.1:{PORT}")
+    WEB_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"\n✅  Fetchr agent v2.0 listening on http://0.0.0.0:{PORT}")
+    print(f"   Web UI:      http://localhost:{PORT}/")
     print(f"   Save folder: {DEFAULT_SAVE_PATH}\n")
 
 
-# ------------------------------------------------------------------ #
-# Settings (in-memory; persisted to settings.json)                    #
-# ------------------------------------------------------------------ #
+# ── Web UI ────────────────────────────────────────────────────────────────────
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_ui():
+    """Serve the web UI — accessible from any device on the network."""
+    index = WEB_DIR / "index.html"
+    if index.exists():
+        return HTMLResponse(content=index.read_text(encoding="utf-8"))
+    # Minimal fallback if web/index.html hasn't been placed yet
+    return HTMLResponse(content="""<!DOCTYPE html>
+<html><head><title>Fetchr</title>
+<style>body{font-family:sans-serif;background:#0f0f0f;color:#f0f0f0;
+display:flex;align-items:center;justify-content:center;height:100vh;margin:0;}
+.box{text-align:center;} a{color:#5865f2;}</style></head>
+<body><div class="box">
+<h1>⬇ Fetchr Agent v2.0</h1>
+<p>Agent is running. Place <code>web/index.html</code> to enable the full UI.</p>
+<p><a href="/docs">API docs →</a></p>
+</div></body></html>""")
+
+
+# ── Settings ──────────────────────────────────────────────────────────────────
 
 SETTINGS_FILE = Path(__file__).parent / "settings.json"
 
 _settings = {
-    "save_path":      DEFAULT_SAVE_PATH,
-    "max_concurrent": 3,
-    "max_speed_kbps": 0,       # 0 = unlimited
-    "intercept_all":  True,
+    "save_path":            DEFAULT_SAVE_PATH,
+    "max_concurrent":       3,
+    "max_speed_kbps":       0,
+    "intercept_all":        True,
+    "cookies_browser":      "chrome",     # NEW: which browser to pull cookies from
+    "hash_check":           False,        # NEW: enable hash-based dedup (slower)
+    "auto_extract":         False,        # NEW: unzip/unrar after download
+    "organise_by_type":     False,        # NEW: sort into Images/ Videos/ etc.
 }
 
 
@@ -123,55 +148,60 @@ async def get_settings():
 
 
 class SettingsUpdate(BaseModel):
-    save_path:      Optional[str]  = None
-    max_concurrent: Optional[int]  = None
-    max_speed_kbps: Optional[int]  = None
-    intercept_all:  Optional[bool] = None
+    save_path:          Optional[str]  = None
+    max_concurrent:     Optional[int]  = None
+    max_speed_kbps:     Optional[int]  = None
+    intercept_all:      Optional[bool] = None
+    cookies_browser:    Optional[str]  = None
+    hash_check:         Optional[bool] = None
+    auto_extract:       Optional[bool] = None
+    organise_by_type:   Optional[bool] = None
 
 
 @app.put("/settings")
 async def update_settings(body: SettingsUpdate):
-    if body.save_path      is not None: _settings["save_path"]      = body.save_path
-    if body.max_concurrent is not None:
+    if body.save_path         is not None: _settings["save_path"]         = body.save_path
+    if body.max_concurrent    is not None:
         _settings["max_concurrent"] = body.max_concurrent
-        queue.max_concurrent = body.max_concurrent
-    if body.max_speed_kbps is not None: _settings["max_speed_kbps"] = body.max_speed_kbps
-    if body.intercept_all  is not None: _settings["intercept_all"]  = body.intercept_all
+        queue.max_concurrent         = body.max_concurrent   # live update (fixed bug)
+    if body.max_speed_kbps    is not None: _settings["max_speed_kbps"]    = body.max_speed_kbps
+    if body.intercept_all     is not None: _settings["intercept_all"]     = body.intercept_all
+    if body.cookies_browser   is not None: _settings["cookies_browser"]   = body.cookies_browser
+    if body.hash_check        is not None: _settings["hash_check"]        = body.hash_check
+    if body.auto_extract      is not None: _settings["auto_extract"]      = body.auto_extract
+    if body.organise_by_type  is not None: _settings["organise_by_type"]  = body.organise_by_type
     _save_settings()
     return _settings
 
 
-# ------------------------------------------------------------------ #
-# Health                                                               #
-# ------------------------------------------------------------------ #
+# ── Health ────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "version": "1.0.0", "active": _count_active()}
-
-
-def _count_active() -> int:
-    return sum(
+    active = sum(
         1 for d in queue.list_all()
         if d["status"] in (DownloadStatus.ACTIVE, DownloadStatus.QUEUED)
     )
+    return {
+        "status":  "ok",
+        "version": "2.0.0",
+        "active":  active,
+        "queued":  sum(1 for d in queue.list_all() if d["status"] == DownloadStatus.QUEUED),
+    }
 
 
-# ------------------------------------------------------------------ #
-# Downloads CRUD                                                        #
-# ------------------------------------------------------------------ #
+# ── Downloads CRUD ────────────────────────────────────────────────────────────
 
 class AddDownloadRequest(BaseModel):
     url:       str
     filename:  Optional[str] = None
     save_path: Optional[str] = None
-    dl_type:   Optional[str] = "direct"   # "direct" | "media"
-    referer:   Optional[str] = None       # page that triggered the download
-    cookies:   Optional[str] = None       # raw Cookie header from the browser
+    dl_type:   Optional[str] = "direct"
+    referer:   Optional[str] = None
+    cookies:   Optional[str] = None
 
 
 def _guess_filename(url: str) -> str:
-    """Extract filename from URL or generate a placeholder."""
     path = url.split("?")[0].rstrip("/")
     name = path.split("/")[-1]
     name = re.sub(r'[\\/:*?"<>|]', "_", name)
@@ -184,14 +214,17 @@ async def add_download(body: AddDownloadRequest):
     save_path = body.save_path or _settings["save_path"]
     dl_type   = DownloadType(body.dl_type) if body.dl_type else DownloadType.DIRECT
 
-    item = queue.add(
-        url=body.url,
-        filename=filename,
-        save_path=save_path,
-        dl_type=dl_type,
-        referer=body.referer or "",
-        cookies=body.cookies or "",
+    item = await queue.add(
+        url       = body.url,
+        filename  = filename,
+        save_path = save_path,
+        dl_type   = dl_type,
+        referer   = body.referer or "",
+        cookies   = body.cookies or "",
     )
+    if item is None:
+        # Already downloaded — return a meaningful response
+        return {"skipped": True, "reason": "URL already in download history"}
     return item.to_dict()
 
 
@@ -239,9 +272,84 @@ async def clear_finished():
     return {"ok": True}
 
 
-# ------------------------------------------------------------------ #
-# Media scanner                                                        #
-# ------------------------------------------------------------------ #
+# ── Batch download ────────────────────────────────────────────────────────────
+
+class BatchDownloadRequest(BaseModel):
+    items: list      # list of {url, filename?, save_path?, dl_type?, referer?, cookies?}
+
+
+@app.post("/downloads/batch", status_code=201)
+async def batch_download(body: BatchDownloadRequest):
+    added = 0
+    skipped = 0
+    for entry in body.items:
+        url       = entry.get("url", "")
+        filename  = entry.get("filename") or _guess_filename(url)
+        save_path = entry.get("save_path") or _settings["save_path"]
+        dl_type   = DownloadType(entry.get("dl_type", "direct"))
+        item = await queue.add(
+            url       = url,
+            filename  = filename,
+            save_path = save_path,
+            dl_type   = dl_type,
+            referer   = entry.get("referer", ""),
+            cookies   = entry.get("cookies", ""),
+        )
+        if item is None:
+            skipped += 1
+        else:
+            added += 1
+    return {"added": added, "skipped": skipped}
+
+
+# ── Scraper (link grabber) ────────────────────────────────────────────────────
+
+class ScrapeRequest(BaseModel):
+    url:     str
+    cookies: Optional[str] = ""
+
+
+@app.post("/scrape")
+async def scrape_url(body: ScrapeRequest):
+    """
+    Gallery/batch link grabber — inspired by CyberDropDownloader's crawlers.
+    Detects the site, scrapes all downloadable items, returns them for the
+    user to review before downloading.
+    """
+    from scrapers import scrape, find_scraper
+
+    scraper = find_scraper(body.url)
+    if not scraper:
+        # No dedicated scraper — try yt-dlp media scan as fallback
+        from downloader import scan_media
+        formats = await scan_media(body.url)
+        return {
+            "url":      body.url,
+            "scraper":  "yt-dlp",
+            "count":    len(formats),
+            "items":    [],
+            "formats":  formats,
+        }
+
+    items = await scraper.scrape(body.url, cookies=body.cookies or "")
+    return {
+        "url":     body.url,
+        "scraper": type(scraper).__name__,
+        "count":   len(items),
+        "items":   [
+            {
+                "url":      i.url,
+                "filename": i.filename,
+                "referer":  i.referer,
+                "album":    i.album,
+                "dl_type":  i.dl_type,
+            }
+            for i in items
+        ],
+    }
+
+
+# ── Media scanner ─────────────────────────────────────────────────────────────
 
 class ScanRequest(BaseModel):
     url: str
@@ -254,9 +362,29 @@ async def scan_url(body: ScanRequest):
     return {"url": body.url, "formats": formats}
 
 
-# ------------------------------------------------------------------ #
-# Entrypoint                                                           #
-# ------------------------------------------------------------------ #
+# ── History ───────────────────────────────────────────────────────────────────
+
+@app.get("/history")
+async def get_history(limit: int = 500):
+    return await db.get_history(limit=limit)
+
+
+@app.delete("/history")
+async def clear_history():
+    """Wipe the entire download history (dedup list resets)."""
+    import aiosqlite
+    async with aiosqlite.connect(db.DB_PATH) as conn:
+        await conn.execute("DELETE FROM history")
+        await conn.commit()
+    return {"ok": True}
+
+
+# ── Entrypoint ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="127.0.0.1", port=PORT, log_level="info")
+    uvicorn.run(
+        "main:app",
+        host      = "0.0.0.0",    # listen on all interfaces — web UI reachable from LAN
+        port      = PORT,
+        log_level = "info",
+    )
