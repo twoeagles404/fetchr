@@ -18,6 +18,7 @@ import asyncio
 import json
 import os
 import re
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional, Set
 
@@ -40,7 +41,31 @@ WEB_DIR = Path(__file__).parent / "web"
 
 # ── App ───────────────────────────────────────────────────────────────────────
 
-app = FastAPI(title="Fetchr Agent", version="2.0.0")
+queue = QueueManager(max_concurrent=3)
+_ws_clients: Set[WebSocket] = set()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ── Startup ──────────────────────────────────────────────────────────────
+    await aria2.start_daemon()
+    queue.on_progress(_broadcast)
+    await queue.start()
+    Path(DEFAULT_SAVE_PATH).mkdir(parents=True, exist_ok=True)
+    WEB_DIR.mkdir(parents=True, exist_ok=True)
+    if _settings.get("notification_url"):
+        notifications.configure(_settings["notification_url"])
+    print(f"\n✅  Fetchr agent v2.1 listening on http://0.0.0.0:{PORT}")
+    print(f"   Web UI:      http://localhost:{PORT}/")
+    print(f"   Save folder: {DEFAULT_SAVE_PATH}\n")
+
+    yield  # ← app runs here
+
+    # ── Shutdown ─────────────────────────────────────────────────────────────
+    await aria2.stop_daemon()
+
+
+app = FastAPI(title="Fetchr Agent", version="2.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -49,9 +74,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-queue = QueueManager(max_concurrent=3)
-_ws_clients: Set[WebSocket] = set()
 
 # ── WebSocket ─────────────────────────────────────────────────────────────────
 
@@ -76,32 +98,6 @@ async def websocket_endpoint(ws: WebSocket):
             await ws.receive_text()
     except WebSocketDisconnect:
         _ws_clients.discard(ws)
-
-
-# ── Startup ───────────────────────────────────────────────────────────────────
-
-@app.on_event("startup")
-async def startup():
-    # aria2c RPC daemon — start before the queue so downloads can use it immediately
-    await aria2.start_daemon()
-
-    queue.on_progress(_broadcast)
-    await queue.start()
-    Path(DEFAULT_SAVE_PATH).mkdir(parents=True, exist_ok=True)
-    WEB_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Configure notifications from saved settings
-    if _settings.get("notification_url"):
-        notifications.configure(_settings["notification_url"])
-
-    print(f"\n✅  Fetchr agent v2.0 listening on http://0.0.0.0:{PORT}")
-    print(f"   Web UI:      http://localhost:{PORT}/")
-    print(f"   Save folder: {DEFAULT_SAVE_PATH}\n")
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    await aria2.stop_daemon()
 
 
 # ── Web UI ────────────────────────────────────────────────────────────────────

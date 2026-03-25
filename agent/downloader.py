@@ -171,7 +171,13 @@ async def _do_download(
 ):
     """Core download dispatch — routes to the right engine."""
     auto = _classify_url(item.url)
+    # Always trust the classifier over the default "direct" from the API:
+    # - HLS/m3u8 → media (needs ffmpeg/yt-dlp to mux)
+    # - No file extension (e.g. youtube.com/watch, vimeo.com/123) → media
+    # - Has a known direct extension (.mp4, .zip, etc.) + user said media → flip to direct
     if auto == "hls":
+        item.dl_type = "media"
+    elif auto == "media":
         item.dl_type = "media"
     elif auto == "direct" and item.dl_type == "media":
         item.dl_type = "direct"
@@ -561,14 +567,23 @@ async def _ffmpeg_hls_download(item, notify, dest_dir):
 
 async def _media_via_aria2c(item, notify, loop, dest_dir):
     def _extract():
-        opts = {
-            "quiet":    True,
-            "no_warnings": True,
-            "cookiesfrombrowser": ("chrome",),
-            "format":   "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-        }
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            return ydl.extract_info(item.url, download=False)
+        # Try with browser cookies first (better rate-limit handling),
+        # fall back to cookie-free if the OS or browser blocks access.
+        for cookies_opt in [{"cookiesfrombrowser": ("chrome",)}, {}]:
+            try:
+                opts = {
+                    "quiet":       True,
+                    "no_warnings": True,
+                    "format":      "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+                    **cookies_opt,
+                }
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    return ydl.extract_info(item.url, download=False)
+            except Exception as e:
+                if cookies_opt:
+                    print(f"⚠️   yt-dlp browser cookies failed ({e}), retrying without cookies…")
+                    continue
+                raise
 
     info = await loop.run_in_executor(None, _extract)
     if not info:
@@ -668,15 +683,17 @@ async def _media_via_aria2c(item, notify, loop, dest_dir):
 
 async def _media_ytdlp_native(item, notify, loop, dest_dir):
     def _get_title():
-        try:
-            with yt_dlp.YoutubeDL({
-                "quiet": True, "no_warnings": True,
-                "cookiesfrombrowser": ("chrome",),
-            }) as ydl:
-                info = ydl.extract_info(item.url, download=False)
-                return info.get("title") or info.get("id") or "video"
-        except Exception:
-            return None
+        for cookies_opt in [{"cookiesfrombrowser": ("chrome",)}, {}]:
+            try:
+                with yt_dlp.YoutubeDL({
+                    "quiet": True, "no_warnings": True, **cookies_opt
+                }) as ydl:
+                    info = ydl.extract_info(item.url, download=False)
+                    return info.get("title") or info.get("id") or "video"
+            except Exception:
+                if cookies_opt:
+                    continue
+                return None
 
     title = await loop.run_in_executor(None, _get_title)
     if title:
@@ -697,7 +714,7 @@ async def _media_ytdlp_native(item, notify, loop, dest_dir):
             item.speed    = 0.0
             asyncio.run_coroutine_threadsafe(notify(item), loop)
 
-    ydl_opts = {
+    base_opts = {
         "outtmpl":              str(dest_dir / "%(title)s.%(ext)s"),
         "progress_hooks":       [_progress_hook],
         "quiet":                True,
@@ -705,7 +722,6 @@ async def _media_ytdlp_native(item, notify, loop, dest_dir):
         "format":               "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
         "merge_output_format":  "mp4",
         "noplaylist":           True,
-        "cookiesfrombrowser":   ("chrome",),
         "retries":              8,
         "fragment_retries":     8,
         "extractor_retries":    4,
@@ -713,7 +729,19 @@ async def _media_ytdlp_native(item, notify, loop, dest_dir):
         "sleep_interval":       2,
         "max_sleep_interval":   5,
     }
-    await loop.run_in_executor(None, _ytdlp_run, item.url, ydl_opts)
+
+    def _run_with_cookie_fallback():
+        for cookies_opt in [{"cookiesfrombrowser": ("chrome",)}, {}]:
+            try:
+                _ytdlp_run(item.url, {**base_opts, **cookies_opt})
+                return
+            except Exception as e:
+                if cookies_opt and "cookies" in str(e).lower():
+                    print(f"⚠️   yt-dlp browser cookies failed, retrying without…")
+                    continue
+                raise
+
+    await loop.run_in_executor(None, _run_with_cookie_fallback)
 
 
 def _ytdlp_run(url, opts):
