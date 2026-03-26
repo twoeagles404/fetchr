@@ -31,6 +31,8 @@ const MEDIA_HOSTS = [
   // Audio
   "soundcloud.com", "bandcamp.com",
   "mixcloud.com",
+  // Messaging / social video (yt-dlp extracts; cookies from browser handle auth)
+  "t.me", "telegram.me", "telegram.org",
   // Adult content — yt-dlp supports all of these natively
   "erome.com",
   "pornhub.com", "ph.pornhub.com",

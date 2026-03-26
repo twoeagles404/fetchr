@@ -575,15 +575,26 @@ async def _ffmpeg_hls_download(item, notify, dest_dir):
 
 
 async def _media_via_aria2c(item, notify, loop, dest_dir):
+    # Forward referer + cookies from the browser extension to yt-dlp so that
+    # authenticated/restricted pages (Telegram, private streams, etc.) work.
+    extra_headers: dict = {"User-Agent": _BASE_UA}
+    if item.referer:
+        extra_headers["Referer"] = item.referer
+    if item.cookies:
+        extra_headers["Cookie"] = item.cookies
+
     def _extract():
         # Try with browser cookies first (better rate-limit handling),
         # fall back to cookie-free if the OS or browser blocks access.
         for cookies_opt in [{"cookiesfrombrowser": ("chrome",)}, {}]:
             try:
                 opts = {
-                    "quiet":       True,
-                    "no_warnings": True,
-                    "format":      "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+                    "quiet":        True,
+                    "no_warnings":  True,
+                    # No codec/container restriction — picks highest resolution
+                    # (e.g. 4K VP9+Opus on YouTube). ffmpeg muxes into mp4 afterwards.
+                    "format":       "bestvideo+bestaudio/best",
+                    "http_headers": extra_headers,
                     **cookies_opt,
                 }
                 with yt_dlp.YoutubeDL(opts) as ydl:
@@ -723,12 +734,26 @@ async def _media_ytdlp_native(item, notify, loop, dest_dir):
             item.speed    = 0.0
             asyncio.run_coroutine_threadsafe(notify(item), loop)
 
+    # Build extra headers dict (referer + cookies forwarded from extension)
+    extra_headers: dict = {"User-Agent": _BASE_UA}
+    if item.referer:
+        extra_headers["Referer"] = item.referer
+    if item.cookies:
+        extra_headers["Cookie"] = item.cookies
+
+    # Detect Telegram URLs — restricted/private videos need cookies from the
+    # browser session on web.telegram.org to authenticate.
+    _TG_HOSTS = ("t.me", "telegram.me", "telegram.org")
+    _is_telegram = any(h in item.url for h in _TG_HOSTS)
+
     base_opts = {
         "outtmpl":              str(dest_dir / "%(title)s.%(ext)s"),
         "progress_hooks":       [_progress_hook],
         "quiet":                True,
         "no_warnings":          True,
-        "format":               "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+        # No codec/container restriction so yt-dlp can select the highest
+        # resolution format (4K VP9, AV1, etc.). ffmpeg merges to mp4.
+        "format":               "bestvideo+bestaudio/best",
         "merge_output_format":  "mp4",
         "noplaylist":           True,
         "retries":              8,
@@ -737,17 +762,30 @@ async def _media_ytdlp_native(item, notify, loop, dest_dir):
         "sleep_interval_requests": 1,
         "sleep_interval":       2,
         "max_sleep_interval":   5,
+        "http_headers":         extra_headers,
     }
 
     def _run_with_cookie_fallback():
-        for cookies_opt in [{"cookiesfrombrowser": ("chrome",)}, {}]:
+        # For Telegram, always try cookies first — restricted channels need them.
+        # For everything else, also try cookies first (better rate-limit handling).
+        attempts = [{"cookiesfrombrowser": ("chrome",)}, {}]
+        for cookies_opt in attempts:
             try:
                 _ytdlp_run(item.url, {**base_opts, **cookies_opt})
                 return
             except Exception as e:
-                if cookies_opt and "cookies" in str(e).lower():
+                err = str(e).lower()
+                # If the error is specifically about cookie access, retry without
+                if cookies_opt and ("cookies" in err or "keyring" in err
+                                    or "permission" in err or "access" in err):
                     print(f"⚠️   yt-dlp browser cookies failed, retrying without…")
                     continue
+                # Telegram private/restricted channel error — surface it clearly
+                if _is_telegram and "private" in err:
+                    raise RuntimeError(
+                        "Telegram: video is in a private channel. "
+                        "Log in at web.telegram.org in Chrome so Fetchr can use your session."
+                    ) from e
                 raise
 
     await loop.run_in_executor(None, _run_with_cookie_fallback)
