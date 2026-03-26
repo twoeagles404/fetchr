@@ -117,8 +117,9 @@ input,select{font-family:inherit;font-size:14px}
         color:var(--text-2);font-variant-numeric:tabular-nums;min-width:36px;text-align:right}
 .dl-bar-wrap{height:4px;background:var(--border);border-radius:2px;margin-bottom:8px;overflow:hidden}
 .dl-bar{
-  height:100%;border-radius:2px;transition:width .4s ease;
+  height:100%;border-radius:2px;transition:width .6s ease-out;
   background:linear-gradient(90deg,var(--accent),#7289da);
+  will-change:width;
 }
 .dl-bar.complete{background:var(--success)}
 .dl-bar.error{background:var(--error)}
@@ -484,10 +485,20 @@ function connectWS() {
     if (msg.type === 'snapshot') {
       downloads = {};
       (msg.data || []).forEach(d => downloads[d.id] = d);
+      if (currentTab === 'downloads') renderDownloads();
     } else if (msg.type === 'progress') {
+      const prev = downloads[msg.data.id];
       downloads[msg.data.id] = msg.data;
+      if (currentTab === 'downloads') {
+        // Status change (queued→active, active→complete, etc.) needs full rebuild
+        if (!prev || prev.status !== msg.data.status) {
+          renderDownloads();
+        } else {
+          // Pure progress update: patch bar + stats in-place (smooth CSS transition)
+          patchCard(msg.data);
+        }
+      }
     }
-    if (currentTab === 'downloads') renderDownloads();
     updateTotalSpeed();
   };
   wsConn.onclose = () => {
@@ -559,6 +570,27 @@ function renderDownloads() {
   document.getElementById('tab-downloads').innerHTML = html;
 }
 
+// ── In-place card update (no DOM rebuild, CSS transition plays) ──────────────
+function patchCard(d) {
+  const card = document.querySelector(`[data-id="${d.id}"]`);
+  if (!card) { renderDownloads(); return; }  // card not found → full rebuild
+
+  const bar  = card.querySelector('.dl-bar');
+  const pctEl = card.querySelector('.dl-pct');
+  const statEl = card.querySelector('.dl-row3');
+
+  if (bar)  bar.style.width = `${Math.min(100, d.progress || 0)}%`;
+  if (pctEl) pctEl.textContent = d.progress ? `${d.progress.toFixed(0)}%` : '';
+  if (statEl && d.status === 'active') {
+    statEl.innerHTML = `
+      <span class="stat">${fmtSpeed(d.speed)}</span>
+      ${d.total ? `<span class="stat">${fmtBytes(d.downloaded)} / ${fmtBytes(d.total)}</span>`
+               : `<span class="stat">${fmtBytes(d.downloaded)}</span>`}
+      ${d.eta  ? `<span class="stat">ETA ${fmtEta(d.eta)}</span>` : ''}
+    `;
+  }
+}
+
 function renderCard(d, showBar) {
   const icon = fileIcon(d.filename);
   const pct  = d.progress ? d.progress.toFixed(0) + '%' : '';
@@ -603,7 +635,7 @@ function renderCard(d, showBar) {
   if (d.error && d.status === 'error')
     errHtml = `<div class="dl-err">${escHtml(d.error)}</div>`;
 
-  return `<div class="dl-card" id="card-${d.id}">
+  return `<div class="dl-card" id="card-${d.id}" data-id="${d.id}">
     <div class="dl-row1">
       <span class="dl-icon">${icon}</span>
       <span class="dl-name" title="${escHtml(d.filename)}">${escHtml(d.filename)}</span>

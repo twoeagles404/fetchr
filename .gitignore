@@ -15,7 +15,7 @@ agent/downloads/
 agent/*.log
 
 # Extension build artifacts
-extension/icons/*.png
+
 
 # OS
 .DS_Store
