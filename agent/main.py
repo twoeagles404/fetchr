@@ -23,8 +23,9 @@ from pathlib import Path
 from typing import Optional, Set
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
@@ -74,6 +75,26 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class _PrivateNetworkMiddleware(BaseHTTPMiddleware):
+    """Allow Chrome extensions and LAN devices to reach this agent.
+    Chrome 94+ blocks Private Network Access without this header."""
+    async def dispatch(self, request: Request, call_next):
+        if request.method == "OPTIONS":
+            from fastapi.responses import Response as _Resp
+            r = _Resp()
+            r.headers["Access-Control-Allow-Origin"]          = "*"
+            r.headers["Access-Control-Allow-Methods"]         = "*"
+            r.headers["Access-Control-Allow-Headers"]         = "*"
+            r.headers["Access-Control-Allow-Private-Network"] = "true"
+            return r
+        response = await call_next(request)
+        response.headers["Access-Control-Allow-Private-Network"] = "true"
+        return response
+
+
+app.add_middleware(_PrivateNetworkMiddleware)
 
 # ── WebSocket ─────────────────────────────────────────────────────────────────
 

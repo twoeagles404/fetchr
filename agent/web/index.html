@@ -895,10 +895,35 @@ function showToast(msg, type = 'success') {
   setTimeout(() => el.remove(), 4000);
 }
 
+// ── Poll fallback ─────────────────────────────────────────────────────────────
+// If the WebSocket drops mid-download, the completion notification is lost.
+// A background poll every 8 s catches any updates the WS missed.
+async function pollDownloads() {
+  try {
+    const data = await fetch(`${BASE}/downloads`).then(r => r.json());
+    if (!Array.isArray(data)) return;
+    let changed = false;
+    data.forEach(d => {
+      const prev = downloads[d.id];
+      if (!prev || prev.status !== d.status || prev.progress !== d.progress) {
+        downloads[d.id] = d;
+        changed = true;
+      }
+    });
+    // Remove items the server no longer knows about (cleared by user)
+    Object.keys(downloads).forEach(id => {
+      if (!data.find(d => d.id === id)) { delete downloads[id]; changed = true; }
+    });
+    if (changed && currentTab === 'downloads') renderDownloads();
+    if (changed) updateTotalSpeed();
+  } catch { /* agent offline, WS will handle reconnect */ }
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 connectWS();
 fetchSettings();
 renderDownloads();
+setInterval(pollDownloads, 8000);   // fallback for when WS drops mid-download
 </script>
 </body>
 </html>

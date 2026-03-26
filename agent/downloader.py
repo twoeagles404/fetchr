@@ -475,15 +475,24 @@ async def _download_media(item: DownloadItem, notify):
         await _download_direct(item, notify)
         return
 
-    try:
-        if ARIA2C_BIN:
+    if ARIA2C_BIN:
+        try:
             await _media_via_aria2c(item, notify, loop, dest_dir)
-        else:
+            return
+        except Exception as e1:
+            print(f"⚠️   aria2c media failed ({e1}), falling back to yt-dlp native…")
+            item.error = None
+
+    # yt-dlp native: handles auth, cookies, merging internally
+    if YTDLP_AVAILABLE:
+        try:
             await _media_ytdlp_native(item, notify, loop, dest_dir)
-    except Exception as yt_err:
-        print(f"⚠️   yt-dlp failed ({yt_err}), retrying as direct download…")
-        item.error = None
-        await _download_direct(item, notify)
+            return
+        except Exception as e2:
+            print(f"⚠️   yt-dlp native failed ({e2}), last resort: direct download…")
+            item.error = None
+
+    await _download_direct(item, notify)
 
 
 async def _ffmpeg_hls_download(item, notify, dest_dir):
