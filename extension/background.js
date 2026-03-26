@@ -31,6 +31,8 @@ const MEDIA_HOSTS = [
   // Audio
   "soundcloud.com", "bandcamp.com",
   "mixcloud.com",
+  // Messaging / social video (yt-dlp extracts; cookies from browser handle auth)
+  "t.me", "telegram.me", "telegram.org",
   // Adult content — yt-dlp supports all of these natively
   "erome.com",
   "pornhub.com", "ph.pornhub.com",
@@ -239,10 +241,38 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     switch (msg.type) {
 
-      // Popup asks for agent status
+      // Popup / options asks for agent status (avoids direct localhost fetch from page context)
       case "getAgentStatus":
         sendResponse({ online: agentOnline });
         break;
+
+      // Options page asks for agent settings via SW (bypasses Private Network Access restriction)
+      case "getAgentSettings": {
+        try {
+          const r = await fetch(`${AGENT_BASE}/settings`, { signal: AbortSignal.timeout(4000) });
+          const s = r.ok ? await r.json() : null;
+          sendResponse({ online: r.ok, settings: s });
+        } catch {
+          sendResponse({ online: false, settings: null });
+        }
+        break;
+      }
+
+      // Options page saves agent settings via SW
+      case "putAgentSettings": {
+        try {
+          const r = await fetch(`${AGENT_BASE}/settings`, {
+            method:  "PUT",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify(msg.payload),
+            signal:  AbortSignal.timeout(4000),
+          });
+          sendResponse({ ok: r.ok });
+        } catch {
+          sendResponse({ ok: false });
+        }
+        break;
+      }
 
       // Popup / content asks to add a download
       case "addDownload": {

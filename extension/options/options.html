@@ -130,16 +130,12 @@
   </div>
 
   <script>
-    const AGENT_BASE = "http://127.0.0.1:9876";
+    // All agent communication goes through the background service worker.
+    // Direct fetch() from extension pages is blocked by Chrome's Private
+    // Network Access policy — the SW is exempt as it runs in a secure context.
 
-    // Robust fetch with manual timeout (no AbortSignal.timeout quirks)
-    function fetchWithTimeout(url, ms = 4000) {
-      return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error("timeout")), ms);
-        fetch(url)
-          .then((r) => { clearTimeout(timer); resolve(r); })
-          .catch((e) => { clearTimeout(timer); reject(e); });
-      });
+    function sendToBackground(msg) {
+      return new Promise((resolve) => chrome.runtime.sendMessage(msg, resolve));
     }
 
     async function checkAgent() {
@@ -148,25 +144,18 @@
       text.textContent = "Checking…";
       dot.classList.remove("online");
 
-      try {
-        const r = await fetchWithTimeout(`${AGENT_BASE}/health`, 4000);
-        if (r.ok) {
-          dot.classList.add("online");
-          text.textContent = "Agent online ✓";
-          // Load agent settings into the form
-          try {
-            const s = await (await fetchWithTimeout(`${AGENT_BASE}/settings`)).json();
-            document.getElementById("savePath").value      = s.save_path      || "";
-            document.getElementById("maxConcurrent").value = s.max_concurrent || 3;
-            document.getElementById("maxSpeed").value      = s.max_speed_kbps || 0;
-          } catch {}
-          return;
+      const resp = await sendToBackground({ type: "getAgentSettings" });
+      if (resp && resp.online) {
+        dot.classList.add("online");
+        text.textContent = "Agent online ✓";
+        if (resp.settings) {
+          const s = resp.settings;
+          document.getElementById("savePath").value      = s.save_path      || "";
+          document.getElementById("maxConcurrent").value = s.max_concurrent || 3;
+          document.getElementById("maxSpeed").value      = s.max_speed_kbps || 0;
         }
-        text.textContent = "Agent returned an error — check the terminal";
-      } catch (e) {
-        text.textContent = e.message === "timeout"
-          ? "Agent not responding — is it running? (port 9876)"
-          : "Agent offline — run: source .venv/bin/activate && python main.py";
+      } else {
+        text.textContent = "Agent offline — run: source venv/bin/activate && python main.py";
       }
     }
 
@@ -179,23 +168,20 @@
     }
 
     document.getElementById("saveBtn").addEventListener("click", async () => {
-      // Save extension settings
+      // Save extension settings to chrome.storage
       await chrome.storage.sync.set({
         interceptAll: document.getElementById("interceptAll").checked,
       });
 
-      // Save agent settings
-      try {
-        await fetch(`${AGENT_BASE}/settings`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            save_path:      document.getElementById("savePath").value,
-            max_concurrent: parseInt(document.getElementById("maxConcurrent").value, 10),
-            max_speed_kbps: parseInt(document.getElementById("maxSpeed").value, 10) || 0,
-          }),
-        });
-      } catch {}
+      // Save agent settings via background SW
+      await sendToBackground({
+        type: "putAgentSettings",
+        payload: {
+          save_path:      document.getElementById("savePath").value,
+          max_concurrent: parseInt(document.getElementById("maxConcurrent").value, 10),
+          max_speed_kbps: parseInt(document.getElementById("maxSpeed").value, 10) || 0,
+        },
+      });
 
       const msg = document.getElementById("savedMsg");
       msg.style.opacity = "1";

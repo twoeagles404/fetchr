@@ -185,6 +185,7 @@
     "tiktok.com", "reddit.com", "v.redd.it",
     "twitch.tv", "dailymotion.com", "facebook.com",
     "soundcloud.com", "mixcloud.com",
+    "t.me", "telegram.me", "telegram.org",
     "erome.com",
     "pornhub.com", "xvideos.com", "xnxx.com",
     "xhamster.com", "spankbang.com", "thisvid.com",

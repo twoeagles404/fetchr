@@ -18,12 +18,14 @@ import asyncio
 import json
 import os
 import re
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional, Set
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
@@ -40,7 +42,31 @@ WEB_DIR = Path(__file__).parent / "web"
 
 # ── App ───────────────────────────────────────────────────────────────────────
 
-app = FastAPI(title="Fetchr Agent", version="2.0.0")
+queue = QueueManager(max_concurrent=3)
+_ws_clients: Set[WebSocket] = set()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ── Startup ──────────────────────────────────────────────────────────────
+    await aria2.start_daemon()
+    queue.on_progress(_broadcast)
+    await queue.start()
+    Path(DEFAULT_SAVE_PATH).mkdir(parents=True, exist_ok=True)
+    WEB_DIR.mkdir(parents=True, exist_ok=True)
+    if _settings.get("notification_url"):
+        notifications.configure(_settings["notification_url"])
+    print(f"\n✅  Fetchr agent v2.1 listening on http://0.0.0.0:{PORT}")
+    print(f"   Web UI:      http://localhost:{PORT}/")
+    print(f"   Save folder: {DEFAULT_SAVE_PATH}\n")
+
+    yield  # ← app runs here
+
+    # ── Shutdown ─────────────────────────────────────────────────────────────
+    await aria2.stop_daemon()
+
+
+app = FastAPI(title="Fetchr Agent", version="2.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -50,8 +76,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-queue = QueueManager(max_concurrent=3)
-_ws_clients: Set[WebSocket] = set()
+
+class _PrivateNetworkMiddleware(BaseHTTPMiddleware):
+    """Allow Chrome extensions and LAN devices to reach this agent.
+    Chrome 94+ blocks Private Network Access without this header."""
+    async def dispatch(self, request: Request, call_next):
+        if request.method == "OPTIONS":
+            from fastapi.responses import Response as _Resp
+            r = _Resp()
+            r.headers["Access-Control-Allow-Origin"]          = "*"
+            r.headers["Access-Control-Allow-Methods"]         = "*"
+            r.headers["Access-Control-Allow-Headers"]         = "*"
+            r.headers["Access-Control-Allow-Private-Network"] = "true"
+            return r
+        response = await call_next(request)
+        response.headers["Access-Control-Allow-Private-Network"] = "true"
+        return response
+
+
+app.add_middleware(_PrivateNetworkMiddleware)
 
 # ── WebSocket ─────────────────────────────────────────────────────────────────
 
@@ -76,32 +119,6 @@ async def websocket_endpoint(ws: WebSocket):
             await ws.receive_text()
     except WebSocketDisconnect:
         _ws_clients.discard(ws)
-
-
-# ── Startup ───────────────────────────────────────────────────────────────────
-
-@app.on_event("startup")
-async def startup():
-    # aria2c RPC daemon — start before the queue so downloads can use it immediately
-    await aria2.start_daemon()
-
-    queue.on_progress(_broadcast)
-    await queue.start()
-    Path(DEFAULT_SAVE_PATH).mkdir(parents=True, exist_ok=True)
-    WEB_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Configure notifications from saved settings
-    if _settings.get("notification_url"):
-        notifications.configure(_settings["notification_url"])
-
-    print(f"\n✅  Fetchr agent v2.0 listening on http://0.0.0.0:{PORT}")
-    print(f"   Web UI:      http://localhost:{PORT}/")
-    print(f"   Save folder: {DEFAULT_SAVE_PATH}\n")
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    await aria2.stop_daemon()
 
 
 # ── Web UI ────────────────────────────────────────────────────────────────────
