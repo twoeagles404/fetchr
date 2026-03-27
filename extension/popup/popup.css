@@ -412,6 +412,25 @@ button { font-family: inherit; cursor: pointer; }
 .progress-fill.paused    { background: var(--amber); }
 .progress-fill.cancelled { background: var(--muted); }
 
+/* Indeterminate: active download with unknown file size (no Content-Length) */
+.progress-fill.indeterminate {
+  width: 100% !important;
+  background-size: 200% 100%;
+  animation: popup-indeterminate 1.8s ease-in-out infinite;
+  background-image: linear-gradient(
+    90deg,
+    var(--surface2) 0%,
+    var(--accent)   30%,
+    var(--accent2)  50%,
+    var(--accent)   70%,
+    var(--surface2) 100%
+  );
+}
+@keyframes popup-indeterminate {
+  0%   { background-position:  200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 .progress-pct {
   font-size: 10.5px;
   color: var(--sub);

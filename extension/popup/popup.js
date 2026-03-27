@@ -182,10 +182,19 @@ function updateItemElement(el, d) {
   const etaEl   = el.querySelector(".eta-el");
   const pauseBtn = el.querySelector(".pause-btn");
 
-  const p = Math.min(d.progress || 0, 100);
-  fill.style.width = p + "%";
-  fill.className   = `progress-fill ${fillClass(d.status)}`;
-  pct.textContent  = p.toFixed(0) + "%";
+  // When the file size is unknown (no Content-Length from server), progress stays
+  // at 0 % even though data is flowing. Show an indeterminate sweep instead.
+  const unknownSize = d.status === "active" && (!d.total || d.total === 0);
+  if (unknownSize) {
+    fill.className   = "progress-fill indeterminate";
+    fill.style.width = "100%";
+    pct.textContent  = "";
+  } else {
+    const p = Math.min(d.progress || 0, 100);
+    fill.style.width = p + "%";
+    fill.className   = `progress-fill ${fillClass(d.status)}`;
+    pct.textContent  = p.toFixed(0) + "%";
+  }
 
   badge.className   = `status-badge status-${d.status}`;
   badge.textContent = d.status;

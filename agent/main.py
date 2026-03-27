@@ -126,6 +126,19 @@ async def websocket_endpoint(ws: WebSocket):
 
 # ── Web UI ────────────────────────────────────────────────────────────────────
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """Return a minimal inline SVG favicon so browsers stop logging 404s."""
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
+        '<rect width="32" height="32" rx="8" fill="#4f6ef7"/>'
+        '<text x="16" y="23" text-anchor="middle" font-size="20" fill="white">⬇</text>'
+        "</svg>"
+    )
+    from fastapi.responses import Response
+    return Response(content=svg, media_type="image/svg+xml")
+
+
 @app.get("/", response_class=HTMLResponse)
 async def serve_ui():
     """Serve the web UI — accessible from any device on the network."""
