@@ -13,9 +13,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import os
+
 import aiosqlite
 
-DB_PATH = Path(__file__).parent / "fetchr.db"
+# Allow the DB to live in a separate data directory (useful for Docker volumes).
+# Set FETCHR_DATA_DIR to override; defaults to the agent directory itself.
+_DATA_DIR = Path(os.environ.get("FETCHR_DATA_DIR", Path(__file__).parent))
+_DATA_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = _DATA_DIR / "fetchr.db"
 
 
 async def init_db() -> None:

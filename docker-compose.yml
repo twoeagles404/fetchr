@@ -1,0 +1,25 @@
+version: "3.9"
+
+services:
+  fetchr:
+    build: .
+    container_name: fetchr
+    restart: unless-stopped
+
+    ports:
+      - "9876:9876"       # Web UI + REST API (accessible from any device on your LAN)
+
+    volumes:
+      - ./downloads:/downloads        # Where completed files land on the host
+      - ./data:/data                  # SQLite database + settings.json persistence
+
+    environment:
+      - FETCHR_SAVE_PATH=/downloads   # Path inside the container
+      - FETCHR_DATA_DIR=/data         # DB + settings live here (mounted above)
+
+    # Optional: limit resource usage
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: "2"
+    #       memory: 512M

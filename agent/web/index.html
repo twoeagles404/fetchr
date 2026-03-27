@@ -129,7 +129,15 @@ input,select{font-family:inherit;font-size:14px}
   animation:shimmer 1.6s linear infinite;
   background-image:linear-gradient(90deg,var(--accent) 0%,#7289da 40%,#a78bfa 60%,var(--accent) 100%);
 }
+/* Indeterminate bar: used when file size is unknown (totalLength = 0 from aria2c) */
+.dl-bar.indeterminate{
+  width:100% !important;
+  background-size:200% 100%;
+  animation:indeterminate 1.8s ease-in-out infinite;
+  background-image:linear-gradient(90deg,var(--border) 0%,var(--accent) 30%,#7289da 50%,var(--accent) 70%,var(--border) 100%);
+}
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+@keyframes indeterminate{0%{background-position:200% 0}100%{background-position:-200% 0}}
 .dl-row3{display:flex;align-items:center;gap:12px;font-size:12px;color:var(--text-2)}
 .dl-row3 .stat{font-variant-numeric:tabular-nums}
 .dl-row3 .spacer{flex:1}
@@ -575,12 +583,25 @@ function patchCard(d) {
   const card = document.querySelector(`[data-id="${d.id}"]`);
   if (!card) { renderDownloads(); return; }  // card not found → full rebuild
 
-  const bar  = card.querySelector('.dl-bar');
+  const bar   = card.querySelector('.dl-bar');
   const pctEl = card.querySelector('.dl-pct');
   const statEl = card.querySelector('.dl-row3');
 
-  if (bar)  bar.style.width = `${Math.min(100, d.progress || 0)}%`;
-  if (pctEl) pctEl.textContent = d.progress ? `${d.progress.toFixed(0)}%` : '';
+  if (bar) {
+    const unknownSize = (!d.total || d.total === 0) && d.status === 'active';
+    if (unknownSize) {
+      bar.classList.add('indeterminate');
+      bar.classList.remove('shimmer');
+      bar.style.width = '100%';
+    } else {
+      bar.classList.remove('indeterminate');
+      bar.style.width = `${Math.min(100, d.progress || 0)}%`;
+    }
+  }
+  if (pctEl) {
+    const unknownSize = (!d.total || d.total === 0) && d.status === 'active';
+    pctEl.textContent = unknownSize ? '' : (d.progress ? `${d.progress.toFixed(0)}%` : '');
+  }
   if (statEl && d.status === 'active') {
     statEl.innerHTML = `
       <span class="stat">${fmtSpeed(d.speed)}</span>
@@ -593,16 +614,27 @@ function patchCard(d) {
 
 function renderCard(d, showBar) {
   const icon = fileIcon(d.filename);
-  const pct  = d.progress ? d.progress.toFixed(0) + '%' : '';
-  const statusClass = {
-    active:'shimmer', complete:'complete', error:'error',
-    paused:'paused', queued:'', cancelled:''
-  }[d.status] || '';
+  const unknownSize = (!d.total || d.total === 0) && d.status === 'active';
+  const pct  = unknownSize ? '' : (d.progress ? d.progress.toFixed(0) + '%' : '');
+
+  // For active downloads with unknown size, use indeterminate bar
+  let barClass = '';
+  let barWidth = `${Math.min(100, d.progress || 0)}%`;
+  if (d.status === 'active') {
+    if (unknownSize) {
+      barClass = 'indeterminate';
+      barWidth = '100%';
+    } else {
+      barClass = 'shimmer';
+    }
+  } else {
+    barClass = { complete:'complete', error:'error', paused:'paused', queued:'', cancelled:'' }[d.status] || '';
+  }
 
   let barHtml = '';
   if (showBar || ['active','paused'].includes(d.status)) {
     barHtml = `<div class="dl-bar-wrap">
-      <div class="dl-bar ${statusClass}" style="width:${Math.min(100, d.progress || 0)}%"></div>
+      <div class="dl-bar ${barClass}" style="width:${barWidth}"></div>
     </div>`;
   }
 
@@ -822,9 +854,21 @@ function renderHistory() {
 async function fetchSettings() {
   try {
     const r = await fetch(`${BASE}/settings`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
     settings = await r.json();
     renderSettings();
-  } catch {}
+  } catch(e) {
+    // Only show the error if the settings tab is currently visible
+    const el = document.getElementById('tab-settings');
+    if (el && el.style.display !== 'none') {
+      el.innerHTML = `<div class="empty" style="padding:40px">
+        <span class="icon">⚙️</span>
+        <p style="color:var(--error)">Could not load settings — is the agent running?</p>
+        <p style="margin-top:8px;font-size:12px;color:var(--text-3)">${escHtml(e.message)}</p>
+        <button onclick="fetchSettings()" style="margin-top:16px;padding:8px 20px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">Retry</button>
+      </div>`;
+    }
+  }
 }
 
 function renderSettings() {
@@ -902,6 +946,7 @@ async function saveSettings() {
     hash_check:       document.getElementById('s-hash').checked,
     auto_extract:     document.getElementById('s-extract').checked,
     organise_by_type: document.getElementById('s-organise').checked,
+    notification_url: document.getElementById('s-notif-url').value,
   };
   try {
     const r = await fetch(`${BASE}/settings`, {
@@ -909,9 +954,10 @@ async function saveSettings() {
       body: JSON.stringify(body),
     });
     settings = await r.json();
+    // Re-render settings tab so all fields reflect what the server confirmed
+    renderSettings();
     const savedEl = document.getElementById('settings-saved');
-    savedEl.style.opacity = '1';
-    setTimeout(() => savedEl.style.opacity = '0', 2000);
+    if (savedEl) { savedEl.style.opacity = '1'; setTimeout(() => savedEl.style.opacity = '0', 2000); }
   } catch(e) {
     showToast('Failed to save settings', 'error');
   }

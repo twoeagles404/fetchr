@@ -36,7 +36,10 @@ from aria2_rpc import aria2
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-DEFAULT_SAVE_PATH = str(Path.home() / "Downloads" / "Fetchr")
+DEFAULT_SAVE_PATH = os.environ.get(
+    "FETCHR_SAVE_PATH",
+    str(Path.home() / "Downloads" / "Fetchr"),
+)
 PORT = int(os.environ.get("FETCHR_PORT", 9876))
 WEB_DIR = Path(__file__).parent / "web"
 
@@ -144,7 +147,9 @@ display:flex;align-items:center;justify-content:center;height:100vh;margin:0;}
 
 # ── Settings ──────────────────────────────────────────────────────────────────
 
-SETTINGS_FILE = Path(__file__).parent / "settings.json"
+# Store settings alongside the DB so they persist in the Docker data volume
+_DATA_DIR     = Path(os.environ.get("FETCHR_DATA_DIR", Path(__file__).parent))
+SETTINGS_FILE = _DATA_DIR / "settings.json"
 
 _settings = {
     "save_path":            DEFAULT_SAVE_PATH,

@@ -1,0 +1,14 @@
+# Don't bake these into the image
+agent/venv/
+agent/.venv/
+agent/__pycache__/
+agent/**/__pycache__/
+agent/*.pyc
+agent/fetchr.db
+agent/settings.json
+downloads/
+data/
+*.md
+extension/
+.git/
+.gitignore
