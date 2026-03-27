@@ -667,6 +667,15 @@ async def _media_via_aria2c(item, notify, loop, dest_dir):
         item.filename = filename
         await _aria2c_subprocess_download(item, notify, fmt["url"], filename, str(dest_dir), extra)
     else:
+        # Multi-stream (separate video + audio DASH tracks) — requires ffmpeg to merge.
+        # If ffmpeg is not installed, bail out here so _media_ytdlp_native can
+        # pick a pre-muxed format that is playable without merging.
+        if not FFMPEG_BIN:
+            raise RuntimeError(
+                "Multi-stream format requires ffmpeg (video+audio are separate DASH tracks). "
+                "Install ffmpeg or Fetchr will fall back to yt-dlp native single-stream mode."
+            )
+
         parts = []
         for i, fmt in enumerate(urls_to_download):
             part_name = f"{title}.part{i}.{fmt['ext']}"
@@ -683,22 +692,23 @@ async def _media_via_aria2c(item, notify, loop, dest_dir):
 
         out_file      = str(dest_dir / f"{title}.mp4")
         item.filename = f"{title}.mp4"
-        if FFMPEG_BIN and len(parts) == 2:
-            merge_cmd = [FFMPEG_BIN, "-y",
-                         "-i", parts[0], "-i", parts[1],
-                         "-c", "copy", out_file]
-            proc = await asyncio.create_subprocess_exec(
-                *merge_cmd,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            await proc.wait()
+        merge_cmd = [FFMPEG_BIN, "-y",
+                     "-i", parts[0], "-i", parts[1],
+                     "-c", "copy", out_file]
+        proc = await asyncio.create_subprocess_exec(
+            *merge_cmd,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.wait()
+        if proc.returncode != 0:
+            stderr = (await proc.stderr.read()).decode("utf-8", errors="replace")
+            # Clean up partial files before raising so we don't leave junk behind
             for p in parts:
                 Path(p).unlink(missing_ok=True)
-        else:
-            Path(parts[0]).rename(out_file)
-            for p in parts[1:]:
-                Path(p).unlink(missing_ok=True)
+            raise RuntimeError(f"ffmpeg merge failed (code {proc.returncode}): {stderr[:300]}")
+        for p in parts:
+            Path(p).unlink(missing_ok=True)
 
 
 async def _media_ytdlp_native(item, notify, loop, dest_dir):
@@ -746,14 +756,23 @@ async def _media_ytdlp_native(item, notify, loop, dest_dir):
     _TG_HOSTS = ("t.me", "telegram.me", "telegram.org")
     _is_telegram = any(h in item.url for h in _TG_HOSTS)
 
+    # Format selection strategy:
+    #   With ffmpeg:    prefer separate best video+audio tracks and let yt-dlp
+    #                   merge them — gives highest quality (4K, VP9, AV1, etc.)
+    #   Without ffmpeg: must use a pre-muxed single-stream format so the result
+    #                   is immediately playable without a merge step.
+    #                   Prefer mp4 container for broadest device compatibility.
+    if FFMPEG_BIN:
+        dl_format = "bestvideo+bestaudio/best"
+    else:
+        dl_format = "bestvideo*[vcodec^=avc][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+
     base_opts = {
         "outtmpl":              str(dest_dir / "%(title)s.%(ext)s"),
         "progress_hooks":       [_progress_hook],
         "quiet":                True,
         "no_warnings":          True,
-        # No codec/container restriction so yt-dlp can select the highest
-        # resolution format (4K VP9, AV1, etc.). ffmpeg merges to mp4.
-        "format":               "bestvideo+bestaudio/best",
+        "format":               dl_format,
         "merge_output_format":  "mp4",
         "noplaylist":           True,
         "retries":              8,
